@@ -31,18 +31,23 @@ Home Assistant needs `options.step.init.menu_options` translations. Update to 0.
 1. Add **DI.FM favourite stations** from the **By card** tab, not a generic media-player tile.
 2. In the card editor, set the entity to `media_player.di_fm_radio` (or the integration player), not the speaker.
 3. Confirm **Configure → Favourite stations** still has the stations you picked during setup.
-4. Hard-refresh the browser so it loads `difm-radio-card.js?v=0.1.3`.
+4. Hard-refresh the browser so it loads `difm-radio-card.js?v=0.1.4`.
 
 HACS does not treat a new `main` commit as an update if the integration was first installed before any GitHub release existed. Use **⋮ → Redownload** and pick the release version.
 
 ## Card is missing
 
-The integration registers `/difm_radio/difm-radio-card.js` as a frontend module.
+This is an **integration** card, not a HACS dashboard plugin. It will not appear under `/config/www/community/`. The file lives at:
 
-1. Restart after installing.
-2. Hard-refresh the browser.
-3. If the card picker still has no **DI.FM Radio** card, add a Lovelace resource of type **module**: `/difm_radio/difm-radio-card.js`
-4. Confirm `custom_components/difm_radio/www/difm-radio-card.js` is present.
+`custom_components/difm_radio/www/difm-radio-card.js`
+
+Home Assistant should serve it as `/difm_radio/difm-radio-card.js`. A file such as `/www/di-fm-player-card.js` is a different card.
+
+1. Update to 0.1.4 or later, then restart Home Assistant.
+2. Open **Settings → Dashboards → Resources** and confirm a **module** resource for `/difm_radio/difm-radio-card.js`.
+3. If it is missing, add that URL yourself as type **module**.
+4. Hard-refresh the browser.
+5. **Edit dashboard → Add card → By card** and search **favourite stations**.
 
 ## Tile tap does nothing / playback fails
 

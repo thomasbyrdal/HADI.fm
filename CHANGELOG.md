@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.4 — 2026-10-24
+
+- Register the Lovelace card as a Dashboard resource so Home Assistant can find **DI.FM favourite stations**
+- Keep serving the card from the integration (`/difm_radio/difm-radio-card.js`), not `/www/community/`
+
 ## 0.1.3 — 2026-10-24
 
 - Show **DI.FM favourite stations** in the Home Assistant 2026.6 card picker when the DI.FM Radio entity is selected

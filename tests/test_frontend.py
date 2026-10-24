@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from custom_components.difm_radio.frontend import card_module_url, www_path
+from custom_components.difm_radio.frontend import (
+    card_module_url,
+    card_resource_path,
+    is_our_card_resource,
+    www_path,
+)
 
 
 def test_card_bundle_is_packaged_and_has_no_listen_key() -> None:
@@ -16,4 +21,8 @@ def test_card_bundle_is_packaged_and_has_no_listen_key() -> None:
 
 
 def test_card_module_url_is_versioned() -> None:
+    assert card_resource_path() == "/difm_radio/difm-radio-card.js"
     assert card_module_url().startswith("/difm_radio/difm-radio-card.js?v=")
+    assert is_our_card_resource("/difm_radio/difm-radio-card.js?v=0.1.4")
+    assert not is_our_card_resource("/local/community/di-fm-player-card.js")
+    assert not is_our_card_resource("/www/di-fm-player-card.js")

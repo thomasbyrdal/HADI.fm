@@ -66,7 +66,9 @@ Stream quality (official Premium copy):
 
 ## Lovelace card
 
-The integration registers `custom:difm-radio-card` as a frontend module at `/difm_radio/difm-radio-card.js`. After a restart:
+The card is bundled with the integration. It is **not** installed under `/www/community/` the way HACS dashboard plugins are. The file is `custom_components/difm_radio/www/difm-radio-card.js`, served as `/difm_radio/difm-radio-card.js`.
+
+After a restart, Home Assistant should add a Dashboard resource of type **module** for that URL. Then:
 
 1. **Edit dashboard → Add card**
 2. Open the **By card** tab (or **Browse all cards**). Searching **DI.FM** on the **By entity** tab only shows built-in media-player tiles.
