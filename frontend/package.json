@@ -1,0 +1,16 @@
+{
+  "name": "difm-radio-card",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/register.ts --bundle --format=esm --target=es2022 --outfile=../custom_components/difm_radio/www/difm-radio-card.js --legal-comments=none",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.11",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "domain": "difm_radio",
+  "name": "DI.FM Radio",
+  "after_dependencies": ["frontend"],
+  "codeowners": ["@byrdal"],
+  "config_flow": true,
+  "dependencies": ["http"],
+  "documentation": "https://github.com/byrdal/HADI.fm",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/byrdal/HADI.fm/issues",
+  "loggers": ["custom_components.difm_radio"],
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}

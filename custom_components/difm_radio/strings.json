@@ -1,0 +1,166 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "DI.FM Radio",
+        "description": "Enter the listen key from Player Settings on di.fm, jazzradio.com, radiotunes.com, rockradio.com, classicalradio.com, or zenradio.com. A paid subscription is required. The key is stored in the integration entry and is never sent to the dashboard.",
+        "data": {
+          "listen_key": "Listen key"
+        },
+        "data_description": {
+          "listen_key": "Settings → Player Settings → Listen Key on any of the network sites."
+        }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate DI.FM Radio",
+        "description": "The listen key was rejected. Enter a current listen key from Player Settings.",
+        "data": {
+          "listen_key": "Listen key"
+        }
+      },
+      "reconfigure": {
+        "title": "Update listen key",
+        "description": "Replace the stored listen key. Favourites and the default speaker are unchanged.",
+        "data": {
+          "listen_key": "Listen key"
+        }
+      },
+      "services": {
+        "title": "Radio services",
+        "description": "Choose which services to show when picking favourite stations. One subscription covers every listed service.",
+        "data": {
+          "service_filter": "Services"
+        }
+      },
+      "favourites": {
+        "title": "Favourite stations",
+        "description": "Select stations to show on the dashboard. The list can be filtered in the previous step. Station names include their service. Search the dropdown to find a station.",
+        "data": {
+          "favourites": "Favourites"
+        }
+      },
+      "player": {
+        "title": "Playback target",
+        "description": "Choose the default Home Assistant speaker and the stream quality advertised for Premium subscribers. Streams play on that speaker through Home Assistant's media player.",
+        "data": {
+          "default_media_player": "Default speaker",
+          "stream_quality": "Stream quality"
+        },
+        "data_description": {
+          "default_media_player": "Must be an existing media_player entity. The dashboard can override this later.",
+          "stream_quality": "MP3 320 kbps is the recommended default because most speakers support it."
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "The listen key was rejected by the radio service.",
+      "cannot_connect": "Could not reach the radio service. Try again later.",
+      "invalid_response": "The radio service returned an unexpected response.",
+      "no_services": "Select at least one radio service.",
+      "no_favourites": "Select at least one favourite station.",
+      "speaker_missing": "That speaker is not available in Home Assistant.",
+      "speaker_incompatible": "The selected entity is not a media player.",
+      "invalid_quality": "Choose one of the listed stream qualities."
+    },
+    "abort": {
+      "already_configured": "DI.FM Radio is already configured.",
+      "no_stations": "No stations were returned by the radio service.",
+      "reauth_successful": "The listen key was updated.",
+      "reconfigure_successful": "The listen key was updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "DI.FM Radio options"
+      },
+      "player": {
+        "title": "Default speaker",
+        "description": "Change the default speaker or stream quality.",
+        "data": {
+          "default_media_player": "Default speaker",
+          "stream_quality": "Stream quality"
+        }
+      },
+      "favourites_filter": {
+        "title": "Filter services",
+        "description": "Choose which services to show in the next favourite list. Existing favourites stay selected even if their service is hidden here.",
+        "data": {
+          "service_filter": "Services"
+        }
+      },
+      "favourites": {
+        "title": "Favourite stations",
+        "description": "Add or remove favourites. The previous order is kept for stations that remain selected.",
+        "data": {
+          "favourites": "Favourites"
+        }
+      },
+      "artwork": {
+        "title": "Station artwork",
+        "description": "Set a custom image URL for a favourite when the official artwork is missing or unsuitable. Leave the URL empty to clear an override.",
+        "data": {
+          "station_id": "Station",
+          "artwork_override": "Artwork URL"
+        }
+      }
+    },
+    "error": {
+      "no_services": "Select at least one radio service.",
+      "no_favourites": "Select at least one favourite station.",
+      "speaker_missing": "That speaker is not available in Home Assistant.",
+      "speaker_incompatible": "The selected entity is not a media player.",
+      "invalid_quality": "Choose one of the listed stream qualities.",
+      "unknown_station": "That station is not in the favourite list."
+    },
+    "abort": {
+      "no_stations": "No stations were returned by the radio service.",
+      "no_favourites": "Add favourite stations before setting artwork."
+    }
+  },
+  "entity": {
+    "media_player": {
+      "radio": {
+        "name": "DI.FM Radio"
+      }
+    }
+  },
+  "services": {
+    "play_station": {
+      "name": "Play station",
+      "description": "Play a DI.FM or sister-service station on a Home Assistant speaker.",
+      "fields": {
+        "station_id": {
+          "name": "Station",
+          "description": "Numeric station id from the catalogue."
+        },
+        "media_player": {
+          "name": "Speaker",
+          "description": "Override the default speaker for this play request."
+        }
+      }
+    },
+    "stop": {
+      "name": "Stop",
+      "description": "Stop playback only if DI.FM Radio started the current stream."
+    },
+    "refresh_stations": {
+      "name": "Refresh stations",
+      "description": "Reload the station catalogue from the radio service."
+    },
+    "set_favourite": {
+      "name": "Set favourite",
+      "description": "Add or remove a station from the persisted favourite list.",
+      "fields": {
+        "station_id": {
+          "name": "Station",
+          "description": "Numeric station id from the catalogue."
+        },
+        "favourite": {
+          "name": "Favourite",
+          "description": "Turn on to add the station, off to remove it."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+play_station:
+  fields:
+    station_id:
+      required: true
+      example: "1"
+      selector:
+        text:
+    media_player:
+      required: false
+      selector:
+        entity:
+          domain: media_player
+
+stop:
+
+refresh_stations:
+
+set_favourite:
+  fields:
+    station_id:
+      required: true
+      example: "1"
+      selector:
+        text:
+    favourite:
+      required: true
+      selector:
+        boolean:

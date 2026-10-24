@@ -1,0 +1,53 @@
+# Troubleshooting
+
+Never paste your listen key, Icecast URLs that contain it, or account passwords into issues or logs.
+
+## Integration does not appear
+
+1. Confirm `custom_components/difm_radio/manifest.json` exists on the Home Assistant host.
+2. Restart Home Assistant, not only reload Lovelace.
+3. Check **Settings → Devices & services → Add integration** for **DI.FM Radio**.
+4. If it is missing, open **Settings → System → Logs** and search for `difm_radio`.
+
+## Listen key rejected
+
+- Copy the key from **Settings → Player Settings** on a network site, not from a playlist URL.
+- Empty keys and public `/listen` responses are not treated as success.
+- A 403 `Invalid Listen Key` body means the key is wrong or expired. Use **Reconfigure**.
+- Timeouts are `cannot_connect`, not an invalid key. Try again later.
+
+## No stations or missing services
+
+- The catalogue is public and cached for six hours. Use the `difm_radio.refresh_stations` service.
+- Inferred-inactive names (`X` + capital letter) stay in the catalogue but cannot be added as new favourites.
+- A favourite that disappeared is kept and marked unavailable.
+
+## Card is missing
+
+The integration registers `/difm_radio/difm-radio-card.js` as a frontend module.
+
+1. Restart after installing.
+2. Hard-refresh the browser.
+3. If the card picker still has no **DI.FM Radio** card, add a Lovelace resource of type **module**: `/difm_radio/difm-radio-card.js`
+4. Confirm `custom_components/difm_radio/www/difm-radio-card.js` is present.
+
+## Tile tap does nothing / playback fails
+
+| Symptom | Likely cause |
+| --- | --- |
+| `speaker_missing` | The default speaker entity no longer exists |
+| `speaker_incompatible` | The selected entity is not a `media_player` |
+| `unsupported_format` | The speaker rejected MP3/AAC. Try `premium_high` |
+| `playback_failed` | The speaker did not enter `playing` / `buffering` |
+| `cannot_connect` | Listen URL resolution failed |
+| `invalid_auth` | The listen key was rejected while resolving |
+
+The logical player only stops a stream it started. If another automation changed the speaker, Stop will not touch it.
+
+## Volume slider missing
+
+The card hides the slider when the target speaker does not advertise `VOLUME_SET`. Change volume on the speaker itself.
+
+## Still unverified
+
+Audio on a physical Home Assistant speaker has not been confirmed in this project. If tiles update but you hear nothing, the speaker firmware or URL acceptance is the next thing to check. See [api-research.md](api-research.md).

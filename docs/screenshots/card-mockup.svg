@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420" role="img" aria-label="DI.FM Radio card mockup">
+  <rect width="720" height="420" rx="16" fill="#1c1c1c"/>
+  <rect x="24" y="24" width="672" height="372" rx="14" fill="#2b2b2b" stroke="#3d3d3d"/>
+  <text x="44" y="62" fill="#f2f2f2" font-family="Helvetica, Arial, sans-serif" font-size="22">DI.FM Radio</text>
+  <text x="600" y="62" fill="#9e9e9e" font-family="Helvetica, Arial, sans-serif" font-size="14">Playing</text>
+  <g>
+    <rect x="44" y="84" width="120" height="132" rx="10" fill="#383838" stroke="#03a9f4"/>
+    <rect x="64" y="98" width="80" height="80" rx="8" fill="#e85824"/>
+    <text x="104" y="200" text-anchor="middle" fill="#f2f2f2" font-family="Helvetica, Arial, sans-serif" font-size="12">Trance</text>
+    <text x="104" y="216" text-anchor="middle" fill="#9e9e9e" font-family="Helvetica, Arial, sans-serif" font-size="11">DI.FM</text>
+    <rect x="176" y="84" width="120" height="132" rx="10" fill="#383838"/>
+    <rect x="196" y="98" width="80" height="80" rx="8" fill="#5c6bc0"/>
+    <text x="236" y="200" text-anchor="middle" fill="#f2f2f2" font-family="Helvetica, Arial, sans-serif" font-size="12">Ambient</text>
+    <text x="236" y="216" text-anchor="middle" fill="#9e9e9e" font-family="Helvetica, Arial, sans-serif" font-size="11">DI.FM</text>
+    <rect x="308" y="84" width="120" height="132" rx="10" fill="#383838"/>
+    <rect x="328" y="98" width="80" height="80" rx="8" fill="#26a69a"/>
+    <text x="368" y="200" text-anchor="middle" fill="#f2f2f2" font-family="Helvetica, Arial, sans-serif" font-size="12">Smooth Jazz</text>
+    <text x="368" y="216" text-anchor="middle" fill="#9e9e9e" font-family="Helvetica, Arial, sans-serif" font-size="11">JazzRadio</text>
+    <rect x="440" y="84" width="120" height="132" rx="10" fill="#383838" opacity="0.45"/>
+    <rect x="460" y="98" width="80" height="80" rx="8" fill="#757575"/>
+    <text x="500" y="200" text-anchor="middle" fill="#f2f2f2" font-family="Helvetica, Arial, sans-serif" font-size="12">XChiptunes</text>
+    <text x="500" y="216" text-anchor="middle" fill="#9e9e9e" font-family="Helvetica, Arial, sans-serif" font-size="11">Unavailable</text>
+  </g>
+  <text x="44" y="260" fill="#f2f2f2" font-family="Helvetica, Arial, sans-serif" font-size="16">Trance</text>
+  <text x="44" y="282" fill="#9e9e9e" font-family="Helvetica, Arial, sans-serif" font-size="12">DI.FM · media_player.living_room</text>
+  <circle cx="600" cy="268" r="18" fill="#383838" stroke="#5a5a5a"/>
+  <polygon points="595,259 595,277 611,268" fill="#f2f2f2"/>
+  <circle cx="648" cy="268" r="18" fill="#383838" stroke="#5a5a5a"/>
+  <rect x="641" y="261" width="14" height="14" fill="#f2f2f2"/>
+  <line x1="44" y1="320" x2="560" y2="320" stroke="#03a9f4" stroke-width="4"/>
+  <circle cx="300" cy="320" r="7" fill="#03a9f4"/>
+  <text x="580" y="325" fill="#9e9e9e" font-family="Helvetica, Arial, sans-serif" font-size="12">40%</text>
+  <text x="44" y="368" fill="#757575" font-family="Helvetica, Arial, sans-serif" font-size="11">Mockup  speaker audio is unverified until tested on a real player</text>
+</svg>
