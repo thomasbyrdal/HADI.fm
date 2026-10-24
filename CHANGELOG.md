@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 — 2026-10-25
+
+- Add a custom Settings icon: a radio with an antenna connected to the internet
+
 ## 0.1.5 — 2026-10-24
 
 - Start playback as soon as a favourite icon is tapped

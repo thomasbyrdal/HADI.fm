@@ -20,6 +20,9 @@ def test_hacs_and_manifest_required_fields() -> None:
     assert manifest["config_flow"] is True
     assert (ROOT / "brand" / "icon.png").is_file()
     assert (INTEGRATION / "brand" / "icon.png").is_file()
+    assert (INTEGRATION / "brand" / "icon.png").stat().st_size > 10_000
+    assert (INTEGRATION / "brand" / "icon@2x.png").is_file()
+    assert manifest.get("icon") == "mdi:radio"
     assert (INTEGRATION / "www" / "difm-radio-card.js").is_file()
     assert (INTEGRATION / "services.yaml").is_file()
     assert (INTEGRATION / "translations" / "en.json").is_file()
