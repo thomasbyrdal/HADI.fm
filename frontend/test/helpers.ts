@@ -65,6 +65,7 @@ export function createHass(
   const hass: MockHass = {
     states: {
       "media_player.living_room": entity("media_player.living_room", "idle", {
+        friendly_name: "Living room",
         volume_level: 0.4,
         supported_features: 4,
       }),

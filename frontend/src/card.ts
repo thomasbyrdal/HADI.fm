@@ -8,6 +8,7 @@ import {
   normalizeConfig,
   playServiceData,
   sanitizeError,
+  selectedFavourite,
   shouldIgnoreTap,
   viewSignature,
 } from "./model";
@@ -91,27 +92,34 @@ export class DifmRadioCard extends HTMLElement {
           <div class="title">${escapeHtml(this._config.title)}</div>
           <div class="state">${escapeHtml(stateLabel(view, this._pendingStation))}</div>
         </div>
+        ${this._speakerHtml(view)}
         ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
         ${this._gridHtml(view)}
-        ${this._pickerHtml(view)}
-        <div class="now">
-          <div class="now-text">
-            <div class="now-name">${escapeHtml(view.stationName || "No station playing")}</div>
-            <div class="now-meta">${escapeHtml(metaLine(view))}</div>
-          </div>
-          <div class="buttons">
-            <button class="icon-button play" type="button" aria-label="Play" ${playDisabled(view) ? "disabled" : ""}>
-              ${ICON_PLAY}
-            </button>
-            <button class="icon-button stop" type="button" aria-label="Stop" ${stopDisabled(view) ? "disabled" : ""}>
-              ${ICON_STOP}
-            </button>
-          </div>
-        </div>
-        ${this._volumeHtml(view)}
+        ${this._nowPlayingHtml(view)}
       </${rootTag}>
     `;
     this._bind();
+  }
+
+  private _speakerHtml(view: CardView): string {
+    if (!view.speakers.length) {
+      return `<div class="speaker">
+        <label for="speaker">Speaker</label>
+        <div class="empty">No Home Assistant speakers were found.</div>
+      </div>`;
+    }
+    const selected = view.speakerEntityId || "";
+    return `<div class="speaker">
+      <label for="speaker">Speaker</label>
+      <select id="speaker" class="speaker-select" aria-label="Choose a speaker" ${this._pendingStation ? "disabled" : ""}>
+        ${view.speakers
+          .map((speaker) => {
+            const isSelected = speaker.id === selected ? "selected" : "";
+            return `<option value="${escapeAttr(speaker.id)}" ${isSelected}>${escapeHtml(speaker.name)}</option>`;
+          })
+          .join("")}
+      </select>
+    </div>`;
   }
 
   private _gridHtml(view: CardView): string {
@@ -132,7 +140,8 @@ export class DifmRadioCard extends HTMLElement {
   }
 
   private _tileHtml(tile: FavouriteTile, view: CardView): string {
-    const active = Boolean(tile.playing || (view.stationId === tile.id && (view.playing || view.buffering)));
+    const currentId = this._pendingStation || view.stationId;
+    const active = Boolean(tile.playing || (currentId === tile.id && (view.playing || view.buffering || this._pendingStation)));
     const loading = this._pendingStation === tile.id || (view.buffering && view.stationId === tile.id);
     const disabled = !tile.available || Boolean(this._pendingStation);
     const art = tile.artwork_url
@@ -148,24 +157,29 @@ export class DifmRadioCard extends HTMLElement {
     </button>`;
   }
 
-  private _pickerHtml(view: CardView): string {
-    if (view.missingEntity || !view.available || !view.favourites.length) {
-      return "";
-    }
-    return `<div class="picker">
-      <label for="station">Listen to</label>
-      <select id="station" class="station-select" aria-label="Choose a station" ${this._pendingStation ? "disabled" : ""}>
-        <option value="">Choose a station</option>
-        ${view.favourites
-          .map((tile) => {
-            const selected = view.stationId === tile.id ? "selected" : "";
-            const disabled = tile.available ? "" : "disabled";
-            const label = tile.available ? tile.name : `${tile.name} (unavailable)`;
-            return `<option value="${escapeAttr(tile.id)}" ${selected} ${disabled}>${escapeHtml(label)}</option>`;
-          })
-          .join("")}
-      </select>
-    </div>`;
+  private _nowPlayingHtml(view: CardView): string {
+    const selected = selectedFavourite(view.favourites, this._pendingStation || view.stationId);
+    const name = selected?.name || view.stationName || "Select a station";
+    const artwork = selected?.artwork_url || view.stationArtwork;
+    const art = artwork
+      ? `<img src="${escapeAttr(artwork)}" alt="${escapeAttr(name)}">`
+      : ICON_RADIO;
+    return `<section class="now-playing" aria-label="Now playing">
+      <div class="hero-art${artwork ? "" : " placeholder"}">${art}</div>
+      <div class="hero-body">
+        <div class="now-name">${escapeHtml(name)}</div>
+        <div class="now-meta">${escapeHtml(metaLine(view, selected))}</div>
+        <div class="buttons">
+          <button class="icon-button play" type="button" aria-label="Play" ${playDisabled(view, selected) ? "disabled" : ""}>
+            ${ICON_PLAY}
+          </button>
+          <button class="icon-button stop" type="button" aria-label="Stop" ${stopDisabled(view) ? "disabled" : ""}>
+            ${ICON_STOP}
+          </button>
+        </div>
+        ${this._volumeHtml(view)}
+      </div>
+    </section>`;
   }
 
   private _volumeHtml(view: CardView): string {
@@ -184,6 +198,9 @@ export class DifmRadioCard extends HTMLElement {
   }
 
   private _bind(): void {
+    this.shadowRoot?.querySelector<HTMLSelectElement>(".speaker-select")?.addEventListener("change", (event) => {
+      this._setSpeaker((event.target as HTMLSelectElement).value);
+    });
     this.shadowRoot?.querySelectorAll<HTMLButtonElement>(".tile").forEach((button) => {
       button.addEventListener("click", () => {
         const stationId = button.dataset.stationId;
@@ -192,15 +209,10 @@ export class DifmRadioCard extends HTMLElement {
         }
       });
     });
-    this.shadowRoot?.querySelector<HTMLSelectElement>(".station-select")?.addEventListener("change", (event) => {
-      const stationId = (event.target as HTMLSelectElement).value;
+    this.shadowRoot?.querySelector(".play")?.addEventListener("click", () => {
+      const stationId = this._pendingStation || this._view.stationId;
       if (stationId) {
         void this._play(stationId);
-      }
-    });
-    this.shadowRoot?.querySelector(".play")?.addEventListener("click", () => {
-      if (this._view.stationId) {
-        void this._play(this._view.stationId);
       }
     });
     this.shadowRoot?.querySelector(".stop")?.addEventListener("click", () => {
@@ -218,12 +230,41 @@ export class DifmRadioCard extends HTMLElement {
     });
     this.shadowRoot?.querySelectorAll("img").forEach((img) => {
       img.addEventListener("error", () => {
-        const art = img.closest(".art");
+        const art = img.closest(".art, .hero-art");
         if (art) {
           art.innerHTML = ICON_RADIO;
+          art.classList.add("placeholder");
         }
       });
     });
+  }
+
+  private _setSpeaker(entityId: string): void {
+    const next: CardConfig = {
+      type: CARD_TYPE,
+      entity: this._config.entity,
+      title: this._config.title,
+      columns: this._config.columns,
+      show_names: this._config.show_names,
+      show_service_labels: this._config.show_service_labels,
+      show_volume: this._config.show_volume,
+    };
+    if (entityId) {
+      next.media_player = entityId;
+    }
+    this._config = normalizeConfig(next);
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: next },
+        bubbles: true,
+        composed: true,
+      }),
+    );
+    if (this._hass) {
+      this._view = deriveView(this._hass, this._config);
+      this._signature = viewSignature(this._view);
+    }
+    this._render();
   }
 
   private async _play(stationId: string): Promise<void> {
@@ -284,8 +325,9 @@ export class DifmRadioCard extends HTMLElement {
   }
 }
 
-function playDisabled(view: CardView): boolean {
-  return !view.stationId || !view.available || view.playing || view.buffering;
+function playDisabled(view: CardView, selected: FavouriteTile | null): boolean {
+  const stationId = selected?.id || view.stationId;
+  return !stationId || !view.available || view.playing || view.buffering;
 }
 
 function stopDisabled(view: CardView): boolean {
@@ -308,8 +350,10 @@ function stateLabel(view: CardView, pending: string | null): string {
   return "Idle";
 }
 
-function metaLine(view: CardView): string {
-  return [view.networkLabel, view.speakerEntityId].filter(Boolean).join(" · ");
+function metaLine(view: CardView, selected: FavouriteTile | null): string {
+  const network = networkLabel(selected?.network || view.network) ?? view.networkLabel;
+  const speaker = view.speakers.find((item) => item.id === view.speakerEntityId)?.name || view.speakerEntityId;
+  return [network, speaker].filter(Boolean).join(" · ");
 }
 
 function escapeHtml(value: string): string {

@@ -66,7 +66,15 @@ Stream quality (official Premium copy):
 
 ## Lovelace card
 
-The integration registers `custom:difm-radio-card` as a frontend module at `/difm_radio/difm-radio-card.js`. After a restart, **Edit dashboard → Add card → DI.FM Radio**. Do not add the generic media-player card for `media_player.di_fm_radio` if you want the station grid; that card has no favourite picker. The logical player also exposes **Browse media** so you can pick a favourite from more-info.
+The integration registers `custom:difm-radio-card` as a frontend module at `/difm_radio/difm-radio-card.js`. After a restart, **Edit dashboard → Add card → DI.FM Radio**.
+
+The card layout is:
+
+1. A **speaker** dropdown
+2. Favourite stations as artwork icons
+3. Large artwork for the selected station, with play, stop, and volume
+
+Do not add the generic media-player card for `media_player.di_fm_radio` if you want that layout. The logical player also exposes **Browse media**.
 
 Mockup: [docs/screenshots/card-mockup.svg](docs/screenshots/card-mockup.svg)
 

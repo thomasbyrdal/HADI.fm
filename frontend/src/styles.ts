@@ -131,17 +131,17 @@ export const CARD_STYLES = `
   font-size: 13px;
   padding: 8px 0 12px;
 }
-.picker {
+.speaker {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 12px;
+  margin-bottom: 14px;
 }
-.picker label {
+.speaker label {
   font-size: 13px;
   font-weight: 500;
 }
-.station-select {
+.speaker-select {
   width: 100%;
   font: inherit;
   color: var(--primary-text-color, #212121);
@@ -150,39 +150,69 @@ export const CARD_STYLES = `
   border-radius: 8px;
   padding: 10px 12px;
 }
-.now {
-  display: flex;
+.now-playing {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 16px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider-color, #e0e0e0);
 }
-.now-text {
+.hero-art {
+  width: 168px;
+  height: 168px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--secondary-background-color, #eee);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--primary-text-color, #000) 12%, transparent);
+}
+.hero-art img,
+.hero-art svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.hero-art.placeholder svg,
+.hero-art svg {
+  padding: 36px;
+  box-sizing: border-box;
+  fill: var(--secondary-text-color, #727272);
+}
+.hero-body {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .now-name {
-  font-weight: 500;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .now-meta {
   color: var(--secondary-text-color, #727272);
-  font-size: 12px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .buttons {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
+  margin-top: 4px;
 }
 .icon-button {
   appearance: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
   border: 1px solid var(--divider-color, #e0e0e0);
   background: var(--secondary-background-color, transparent);
   color: var(--primary-text-color, #212121);
@@ -190,20 +220,25 @@ export const CARD_STYLES = `
   place-items: center;
   cursor: pointer;
 }
+.icon-button.play {
+  background: var(--primary-color, #03a9f4);
+  border-color: var(--primary-color, #03a9f4);
+  color: var(--text-primary-color, #fff);
+}
 .icon-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 .icon-button svg {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   fill: currentColor;
 }
 .volume {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 4px;
 }
 .volume input {
   flex: 1;
@@ -216,11 +251,26 @@ export const CARD_STYLES = `
   color: var(--secondary-text-color, #727272);
 }
 .volume-hint {
-  margin-top: 8px;
+  margin-top: 4px;
   font-size: 12px;
   color: var(--secondary-text-color, #727272);
 }
-@media (max-width: 420px) {
+@media (max-width: 520px) {
+  .now-playing {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+  .hero-body {
+    width: 100%;
+    align-items: center;
+  }
+  .buttons {
+    justify-content: center;
+  }
+  .volume {
+    width: 100%;
+  }
   .grid.fixed {
     grid-template-columns: repeat(min(2, var(--columns, 2)), minmax(0, 1fr));
   }

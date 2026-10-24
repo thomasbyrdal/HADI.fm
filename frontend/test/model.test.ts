@@ -82,6 +82,8 @@ describe("parseFavourites and deriveView", () => {
     expect(view.volume.supported).toBe(true);
     expect(view.volume.level).toBe(0.4);
     expect(view.volume.entityId).toBe("media_player.living_room");
+    expect(view.stationArtwork).toContain("trance.png");
+    expect(view.speakers.map((item) => item.id)).toEqual(["media_player.living_room"]);
   });
 
   it("hides volume when the speaker cannot set it", () => {
@@ -120,7 +122,7 @@ describe("helpers", () => {
   });
 
   it("sizes the card from the favourite grid", () => {
-    expect(cardSize(8, 4)).toBe(4);
-    expect(cardSize(0, 0)).toBe(3);
+    expect(cardSize(8, 4)).toBe(6);
+    expect(cardSize(0, 0)).toBe(5);
   });
 });

@@ -54,6 +54,11 @@ export interface VolumeInfo {
   supported: boolean;
 }
 
+export interface SpeakerChoice {
+  id: string;
+  name: string;
+}
+
 export interface CardView {
   entityId: string;
   available: boolean;
@@ -61,9 +66,11 @@ export interface CardView {
   state: string;
   stationId: string | null;
   stationName: string | null;
+  stationArtwork: string | null;
   network: string | null;
   networkLabel: string | null;
   speakerEntityId: string | null;
+  speakers: SpeakerChoice[];
   owned: boolean;
   lastError: string | null;
   lastErrorCode: string | null;

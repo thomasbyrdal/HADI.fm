@@ -50,6 +50,7 @@ export class DifmRadioCardEditor extends HTMLElement {
           <option value="">Use integration default</option>
           ${speakers.map((id) => option(id, config.media_player)).join("")}
         </select>
+        <div class="hint">Optional starting speaker. The card also has a speaker dropdown.</div>
       </div>
       <div class="field">
         <label for="title">Title</label>
@@ -127,7 +128,7 @@ function mediaPlayers(hass: HomeAssistant | null): string[] {
     return [];
   }
   return Object.keys(hass.states)
-    .filter((entityId) => entityId.startsWith("media_player."))
+    .filter((entityId) => entityId.startsWith("media_player.") && !isRadioEntity(hass, entityId))
     .sort();
 }
 

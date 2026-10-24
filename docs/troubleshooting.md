@@ -31,7 +31,9 @@ Home Assistant needs `options.step.init.menu_options` translations. Update to 0.
 1. Add **DI.FM Radio**, not a generic media-player card.
 2. In the card editor, set the entity to `media_player.di_fm_radio` (or the integration player), not the speaker.
 3. Confirm **Configure → Favourite stations** still has the stations you picked during setup.
-4. Hard-refresh the browser so it loads `difm-radio-card.js?v=0.1.1`.
+4. Hard-refresh the browser so it loads `difm-radio-card.js?v=0.1.2`.
+
+HACS does not treat a new `main` commit as an update if the integration was first installed before any GitHub release existed. Use **⋮ → Redownload** and pick the release version.
 
 ## Card is missing
 

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DifmRadioCard } from "../src/card";
-import { createHass, radioEntity } from "./helpers";
+import { createHass, entity, radioEntity } from "./helpers";
 
 describe("DifmRadioCard", () => {
   beforeEach(() => {
@@ -39,22 +39,59 @@ describe("DifmRadioCard", () => {
     expect(card.shadowRoot!.textContent).toContain("Trance");
     expect(card.shadowRoot!.textContent).toContain("DI.FM");
     expect(card.shadowRoot!.querySelector(".tile.unavailable")).toBeTruthy();
-    expect(card.shadowRoot!.querySelector(".station-select")).toBeTruthy();
+    expect(card.shadowRoot!.querySelector(".speaker-select")).toBeTruthy();
+    expect(card.shadowRoot!.querySelector(".now-playing")).toBeTruthy();
+    expect(card.shadowRoot!.textContent).toContain("Select a station");
     expect(card.shadowRoot!.innerHTML).not.toContain("listen_key");
     expect(card.shadowRoot!.innerHTML).not.toContain("prem2.di.fm");
   });
 
-  it("plays from the station dropdown", async () => {
-    const { card, hass } = mount();
-    const select = card.shadowRoot!.querySelector<HTMLSelectElement>(".station-select")!;
-    select.value = "12";
+  it("lets the user pick a speaker on the card", async () => {
+    const hass = createHass({
+      "media_player.kitchen": entity("media_player.kitchen", "idle", {
+        friendly_name: "Kitchen",
+        volume_level: 0.2,
+        supported_features: 4,
+      }),
+    });
+    const { card } = mount(hass);
+    const events: unknown[] = [];
+    card.addEventListener("config-changed", (event) => {
+      events.push((event as CustomEvent).detail.config);
+    });
+    const select = card.shadowRoot!.querySelector<HTMLSelectElement>(".speaker-select")!;
+    expect(select.value).toBe("media_player.living_room");
+    expect(select.textContent).toContain("Kitchen");
+    select.value = "media_player.kitchen";
     select.dispatchEvent(new Event("change"));
+    expect(events.at(-1)).toMatchObject({ media_player: "media_player.kitchen" });
+    card.shadowRoot!.querySelector<HTMLButtonElement>('[data-station-id="1"]')!.click();
     await Promise.resolve();
     expect(hass.calls[0]).toEqual({
       domain: "difm_radio",
       service: "play_station",
-      data: { station_id: "12" },
+      data: { station_id: "1", media_player: "media_player.kitchen" },
     });
+  });
+
+  it("shows large artwork for the selected station", () => {
+    const hass = createHass({
+      "media_player.di_fm_radio": radioEntity({
+        attributes: {
+          station_id: "1",
+          media_title: "Trance",
+          network: "di",
+          owned: true,
+        },
+      }),
+    });
+    hass.states["media_player.di_fm_radio"].state = "playing";
+    hass.states["media_player.di_fm_radio"].attributes.favourites = radioEntity().attributes.favourites;
+    hass.states["media_player.di_fm_radio"].attributes.integration = "difm_radio";
+    const { card } = mount(hass);
+    expect(card.shadowRoot!.querySelector(".hero-art img")?.getAttribute("src")).toContain("trance.png");
+    expect(card.shadowRoot!.querySelector(".now-playing")!.textContent).toContain("Trance");
+    expect(card.shadowRoot!.querySelector(".station-select")).toBeNull();
   });
 
   it("calls play_station when a tile is clicked", async () => {

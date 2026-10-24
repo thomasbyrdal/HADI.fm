@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-10-24
+
+- Rebuild the Lovelace card: speaker dropdown, favourite station icons, then large now-playing artwork with play, stop, and volume
+
 ## 0.1.1 — 2026-10-24
 
 - Label every item on the integration Configure menu, including English (GB)

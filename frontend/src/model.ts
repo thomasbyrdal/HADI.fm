@@ -8,6 +8,7 @@ import {
   type FavouriteTile,
   type HomeAssistant,
   type NormalizedConfig,
+  type SpeakerChoice,
   type VolumeInfo,
 } from "./types";
 
@@ -79,6 +80,50 @@ export function resolveRadioEntity(
     return configured;
   }
   return findRadioEntity(hass) || configured || "";
+}
+
+export function speakerLabel(
+  hass: HomeAssistant | null | undefined,
+  entityId: string,
+): string {
+  const name = hass?.states[entityId]?.attributes?.friendly_name;
+  if (typeof name === "string" && name.trim()) {
+    return name.trim();
+  }
+  return entityId.replace(/^media_player\./, "").replace(/_/g, " ");
+}
+
+export function listSpeakers(
+  hass: HomeAssistant | null | undefined,
+  radioEntityId: string,
+  selectedId: string | null,
+): SpeakerChoice[] {
+  if (!hass?.states) {
+    return selectedId ? [{ id: selectedId, name: speakerLabel(hass, selectedId) }] : [];
+  }
+  const speakers = Object.keys(hass.states)
+    .filter(
+      (entityId) =>
+        entityId.startsWith("media_player.") &&
+        entityId !== radioEntityId &&
+        !isRadioEntity(hass, entityId),
+    )
+    .sort()
+    .map((id) => ({ id, name: speakerLabel(hass, id) }));
+  if (selectedId && !speakers.some((item) => item.id === selectedId)) {
+    speakers.unshift({ id: selectedId, name: speakerLabel(hass, selectedId) });
+  }
+  return speakers;
+}
+
+export function selectedFavourite(
+  favourites: FavouriteTile[],
+  stationId: string | null,
+): FavouriteTile | null {
+  if (!stationId) {
+    return null;
+  }
+  return favourites.find((tile) => tile.id === stationId) ?? null;
 }
 
 export function networkLabel(network: string | null | undefined): string | null {
@@ -171,18 +216,24 @@ export function deriveView(hass: HomeAssistant | null | undefined, config: Norma
   const network = typeof attrs.network === "string" ? attrs.network : null;
   const playing = entity.state === "playing";
   const buffering = entity.state === "buffering";
+  const selected = selectedFavourite(favourites, stationId);
+  const speakerEntityId =
+    config.media_player ||
+    (typeof attrs.speaker_entity_id === "string" ? attrs.speaker_entity_id : null);
   return {
     entityId,
     available: entity.state !== "unavailable" && entity.state !== "unknown",
     missingEntity: false,
     state: entity.state,
     stationId,
-    stationName: typeof entity.attributes.media_title === "string" ? entity.attributes.media_title : null,
-    network,
-    networkLabel: networkLabel(network),
-    speakerEntityId:
-      config.media_player ||
-      (typeof attrs.speaker_entity_id === "string" ? attrs.speaker_entity_id : null),
+    stationName:
+      selected?.name ||
+      (typeof entity.attributes.media_title === "string" ? entity.attributes.media_title : null),
+    stationArtwork: selected?.artwork_url ?? null,
+    network: selected?.network || network,
+    networkLabel: networkLabel(selected?.network || network),
+    speakerEntityId,
+    speakers: listSpeakers(hass, entityId, speakerEntityId),
     owned: Boolean(attrs.owned),
     lastError: errorMessage(
       typeof attrs.last_error === "string" ? attrs.last_error : null,
@@ -203,8 +254,10 @@ export function viewSignature(view: CardView): string {
     owned: view.owned,
     lastError: view.lastErrorCode,
     speakerEntityId: view.speakerEntityId,
+    speakers: view.speakers,
     volume: view.volume,
     favourites: view.favourites,
+    stationArtwork: view.stationArtwork,
   });
 }
 
@@ -236,7 +289,7 @@ export function playServiceData(stationId: string, speakerOverride: string): Rec
 export function cardSize(favouriteCount: number, columns: number): number {
   const cols = columns > 0 ? columns : 4;
   const rows = favouriteCount === 0 ? 1 : Math.ceil(favouriteCount / cols);
-  return 2 + rows;
+  return 4 + rows;
 }
 
 function emptyView(entityId: string, missingEntity: boolean): CardView {
@@ -247,9 +300,11 @@ function emptyView(entityId: string, missingEntity: boolean): CardView {
     state: "unavailable",
     stationId: null,
     stationName: null,
+    stationArtwork: null,
     network: null,
     networkLabel: null,
     speakerEntityId: null,
+    speakers: [],
     owned: false,
     lastError: null,
     lastErrorCode: null,

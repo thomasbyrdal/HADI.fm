@@ -68,6 +68,31 @@ function resolveRadioEntity(hass, config) {
   }
   return findRadioEntity(hass) || configured || "";
 }
+function speakerLabel(hass, entityId) {
+  const name = hass?.states[entityId]?.attributes?.friendly_name;
+  if (typeof name === "string" && name.trim()) {
+    return name.trim();
+  }
+  return entityId.replace(/^media_player\./, "").replace(/_/g, " ");
+}
+function listSpeakers(hass, radioEntityId, selectedId) {
+  if (!hass?.states) {
+    return selectedId ? [{ id: selectedId, name: speakerLabel(hass, selectedId) }] : [];
+  }
+  const speakers = Object.keys(hass.states).filter(
+    (entityId) => entityId.startsWith("media_player.") && entityId !== radioEntityId && !isRadioEntity(hass, entityId)
+  ).sort().map((id) => ({ id, name: speakerLabel(hass, id) }));
+  if (selectedId && !speakers.some((item) => item.id === selectedId)) {
+    speakers.unshift({ id: selectedId, name: speakerLabel(hass, selectedId) });
+  }
+  return speakers;
+}
+function selectedFavourite(favourites, stationId) {
+  if (!stationId) {
+    return null;
+  }
+  return favourites.find((tile) => tile.id === stationId) ?? null;
+}
 function networkLabel(network) {
   if (!network) {
     return null;
@@ -146,16 +171,20 @@ function deriveView(hass, config) {
   const network = typeof attrs.network === "string" ? attrs.network : null;
   const playing = entity.state === "playing";
   const buffering = entity.state === "buffering";
+  const selected = selectedFavourite(favourites, stationId);
+  const speakerEntityId = config.media_player || (typeof attrs.speaker_entity_id === "string" ? attrs.speaker_entity_id : null);
   return {
     entityId,
     available: entity.state !== "unavailable" && entity.state !== "unknown",
     missingEntity: false,
     state: entity.state,
     stationId,
-    stationName: typeof entity.attributes.media_title === "string" ? entity.attributes.media_title : null,
-    network,
-    networkLabel: networkLabel(network),
-    speakerEntityId: config.media_player || (typeof attrs.speaker_entity_id === "string" ? attrs.speaker_entity_id : null),
+    stationName: selected?.name || (typeof entity.attributes.media_title === "string" ? entity.attributes.media_title : null),
+    stationArtwork: selected?.artwork_url ?? null,
+    network: selected?.network || network,
+    networkLabel: networkLabel(selected?.network || network),
+    speakerEntityId,
+    speakers: listSpeakers(hass, entityId, speakerEntityId),
     owned: Boolean(attrs.owned),
     lastError: errorMessage(
       typeof attrs.last_error === "string" ? attrs.last_error : null
@@ -175,8 +204,10 @@ function viewSignature(view) {
     owned: view.owned,
     lastError: view.lastErrorCode,
     speakerEntityId: view.speakerEntityId,
+    speakers: view.speakers,
     volume: view.volume,
-    favourites: view.favourites
+    favourites: view.favourites,
+    stationArtwork: view.stationArtwork
   });
 }
 function shouldIgnoreTap(pending, lastTapAt, now, stationId, playingStationId, playing) {
@@ -198,7 +229,7 @@ function playServiceData(stationId, speakerOverride) {
 function cardSize(favouriteCount, columns) {
   const cols = columns > 0 ? columns : 4;
   const rows = favouriteCount === 0 ? 1 : Math.ceil(favouriteCount / cols);
-  return 2 + rows;
+  return 4 + rows;
 }
 function emptyView(entityId, missingEntity) {
   return {
@@ -208,9 +239,11 @@ function emptyView(entityId, missingEntity) {
     state: "unavailable",
     stationId: null,
     stationName: null,
+    stationArtwork: null,
     network: null,
     networkLabel: null,
     speakerEntityId: null,
+    speakers: [],
     owned: false,
     lastError: null,
     lastErrorCode: null,
@@ -362,17 +395,17 @@ var CARD_STYLES = `
   font-size: 13px;
   padding: 8px 0 12px;
 }
-.picker {
+.speaker {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 12px;
+  margin-bottom: 14px;
 }
-.picker label {
+.speaker label {
   font-size: 13px;
   font-weight: 500;
 }
-.station-select {
+.speaker-select {
   width: 100%;
   font: inherit;
   color: var(--primary-text-color, #212121);
@@ -381,39 +414,69 @@ var CARD_STYLES = `
   border-radius: 8px;
   padding: 10px 12px;
 }
-.now {
-  display: flex;
+.now-playing {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 16px;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--divider-color, #e0e0e0);
 }
-.now-text {
+.hero-art {
+  width: 168px;
+  height: 168px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--secondary-background-color, #eee);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--primary-text-color, #000) 12%, transparent);
+}
+.hero-art img,
+.hero-art svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.hero-art.placeholder svg,
+.hero-art svg {
+  padding: 36px;
+  box-sizing: border-box;
+  fill: var(--secondary-text-color, #727272);
+}
+.hero-body {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 .now-name {
-  font-weight: 500;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .now-meta {
   color: var(--secondary-text-color, #727272);
-  font-size: 12px;
+  font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .buttons {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
+  margin-top: 4px;
 }
 .icon-button {
   appearance: none;
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
   border: 1px solid var(--divider-color, #e0e0e0);
   background: var(--secondary-background-color, transparent);
   color: var(--primary-text-color, #212121);
@@ -421,20 +484,25 @@ var CARD_STYLES = `
   place-items: center;
   cursor: pointer;
 }
+.icon-button.play {
+  background: var(--primary-color, #03a9f4);
+  border-color: var(--primary-color, #03a9f4);
+  color: var(--text-primary-color, #fff);
+}
 .icon-button:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 .icon-button svg {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   fill: currentColor;
 }
 .volume {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 4px;
 }
 .volume input {
   flex: 1;
@@ -447,11 +515,26 @@ var CARD_STYLES = `
   color: var(--secondary-text-color, #727272);
 }
 .volume-hint {
-  margin-top: 8px;
+  margin-top: 4px;
   font-size: 12px;
   color: var(--secondary-text-color, #727272);
 }
-@media (max-width: 420px) {
+@media (max-width: 520px) {
+  .now-playing {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    text-align: center;
+  }
+  .hero-body {
+    width: 100%;
+    align-items: center;
+  }
+  .buttons {
+    justify-content: center;
+  }
+  .volume {
+    width: 100%;
+  }
   .grid.fixed {
     grid-template-columns: repeat(min(2, var(--columns, 2)), minmax(0, 1fr));
   }
@@ -556,27 +639,31 @@ var DifmRadioCard = class extends HTMLElement {
           <div class="title">${escapeHtml(this._config.title)}</div>
           <div class="state">${escapeHtml(stateLabel(view, this._pendingStation))}</div>
         </div>
+        ${this._speakerHtml(view)}
         ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
         ${this._gridHtml(view)}
-        ${this._pickerHtml(view)}
-        <div class="now">
-          <div class="now-text">
-            <div class="now-name">${escapeHtml(view.stationName || "No station playing")}</div>
-            <div class="now-meta">${escapeHtml(metaLine(view))}</div>
-          </div>
-          <div class="buttons">
-            <button class="icon-button play" type="button" aria-label="Play" ${playDisabled(view) ? "disabled" : ""}>
-              ${ICON_PLAY}
-            </button>
-            <button class="icon-button stop" type="button" aria-label="Stop" ${stopDisabled(view) ? "disabled" : ""}>
-              ${ICON_STOP}
-            </button>
-          </div>
-        </div>
-        ${this._volumeHtml(view)}
+        ${this._nowPlayingHtml(view)}
       </${rootTag}>
     `;
     this._bind();
+  }
+  _speakerHtml(view) {
+    if (!view.speakers.length) {
+      return `<div class="speaker">
+        <label for="speaker">Speaker</label>
+        <div class="empty">No Home Assistant speakers were found.</div>
+      </div>`;
+    }
+    const selected = view.speakerEntityId || "";
+    return `<div class="speaker">
+      <label for="speaker">Speaker</label>
+      <select id="speaker" class="speaker-select" aria-label="Choose a speaker" ${this._pendingStation ? "disabled" : ""}>
+        ${view.speakers.map((speaker) => {
+      const isSelected = speaker.id === selected ? "selected" : "";
+      return `<option value="${escapeAttr(speaker.id)}" ${isSelected}>${escapeHtml(speaker.name)}</option>`;
+    }).join("")}
+      </select>
+    </div>`;
   }
   _gridHtml(view) {
     if (view.missingEntity) {
@@ -595,7 +682,8 @@ var DifmRadioCard = class extends HTMLElement {
     </div>`;
   }
   _tileHtml(tile, view) {
-    const active = Boolean(tile.playing || view.stationId === tile.id && (view.playing || view.buffering));
+    const currentId = this._pendingStation || view.stationId;
+    const active = Boolean(tile.playing || currentId === tile.id && (view.playing || view.buffering || this._pendingStation));
     const loading = this._pendingStation === tile.id || view.buffering && view.stationId === tile.id;
     const disabled = !tile.available || Boolean(this._pendingStation);
     const art = tile.artwork_url ? `<img src="${escapeAttr(tile.artwork_url)}" alt="" loading="lazy">` : ICON_RADIO;
@@ -608,22 +696,27 @@ var DifmRadioCard = class extends HTMLElement {
       ${loading ? `<span class="spinner" aria-hidden="true"></span>` : ""}
     </button>`;
   }
-  _pickerHtml(view) {
-    if (view.missingEntity || !view.available || !view.favourites.length) {
-      return "";
-    }
-    return `<div class="picker">
-      <label for="station">Listen to</label>
-      <select id="station" class="station-select" aria-label="Choose a station" ${this._pendingStation ? "disabled" : ""}>
-        <option value="">Choose a station</option>
-        ${view.favourites.map((tile) => {
-      const selected = view.stationId === tile.id ? "selected" : "";
-      const disabled = tile.available ? "" : "disabled";
-      const label = tile.available ? tile.name : `${tile.name} (unavailable)`;
-      return `<option value="${escapeAttr(tile.id)}" ${selected} ${disabled}>${escapeHtml(label)}</option>`;
-    }).join("")}
-      </select>
-    </div>`;
+  _nowPlayingHtml(view) {
+    const selected = selectedFavourite(view.favourites, this._pendingStation || view.stationId);
+    const name = selected?.name || view.stationName || "Select a station";
+    const artwork = selected?.artwork_url || view.stationArtwork;
+    const art = artwork ? `<img src="${escapeAttr(artwork)}" alt="${escapeAttr(name)}">` : ICON_RADIO;
+    return `<section class="now-playing" aria-label="Now playing">
+      <div class="hero-art${artwork ? "" : " placeholder"}">${art}</div>
+      <div class="hero-body">
+        <div class="now-name">${escapeHtml(name)}</div>
+        <div class="now-meta">${escapeHtml(metaLine(view, selected))}</div>
+        <div class="buttons">
+          <button class="icon-button play" type="button" aria-label="Play" ${playDisabled(view, selected) ? "disabled" : ""}>
+            ${ICON_PLAY}
+          </button>
+          <button class="icon-button stop" type="button" aria-label="Stop" ${stopDisabled(view) ? "disabled" : ""}>
+            ${ICON_STOP}
+          </button>
+        </div>
+        ${this._volumeHtml(view)}
+      </div>
+    </section>`;
   }
   _volumeHtml(view) {
     if (!this._config.show_volume) {
@@ -640,6 +733,9 @@ var DifmRadioCard = class extends HTMLElement {
     </div>`;
   }
   _bind() {
+    this.shadowRoot?.querySelector(".speaker-select")?.addEventListener("change", (event) => {
+      this._setSpeaker(event.target.value);
+    });
     this.shadowRoot?.querySelectorAll(".tile").forEach((button) => {
       button.addEventListener("click", () => {
         const stationId = button.dataset.stationId;
@@ -648,15 +744,10 @@ var DifmRadioCard = class extends HTMLElement {
         }
       });
     });
-    this.shadowRoot?.querySelector(".station-select")?.addEventListener("change", (event) => {
-      const stationId = event.target.value;
+    this.shadowRoot?.querySelector(".play")?.addEventListener("click", () => {
+      const stationId = this._pendingStation || this._view.stationId;
       if (stationId) {
         void this._play(stationId);
-      }
-    });
-    this.shadowRoot?.querySelector(".play")?.addEventListener("click", () => {
-      if (this._view.stationId) {
-        void this._play(this._view.stationId);
       }
     });
     this.shadowRoot?.querySelector(".stop")?.addEventListener("click", () => {
@@ -674,12 +765,40 @@ var DifmRadioCard = class extends HTMLElement {
     });
     this.shadowRoot?.querySelectorAll("img").forEach((img) => {
       img.addEventListener("error", () => {
-        const art = img.closest(".art");
+        const art = img.closest(".art, .hero-art");
         if (art) {
           art.innerHTML = ICON_RADIO;
+          art.classList.add("placeholder");
         }
       });
     });
+  }
+  _setSpeaker(entityId) {
+    const next = {
+      type: CARD_TYPE,
+      entity: this._config.entity,
+      title: this._config.title,
+      columns: this._config.columns,
+      show_names: this._config.show_names,
+      show_service_labels: this._config.show_service_labels,
+      show_volume: this._config.show_volume
+    };
+    if (entityId) {
+      next.media_player = entityId;
+    }
+    this._config = normalizeConfig(next);
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config: next },
+        bubbles: true,
+        composed: true
+      })
+    );
+    if (this._hass) {
+      this._view = deriveView(this._hass, this._config);
+      this._signature = viewSignature(this._view);
+    }
+    this._render();
   }
   async _play(stationId) {
     if (shouldIgnoreTap(
@@ -734,8 +853,9 @@ var DifmRadioCard = class extends HTMLElement {
     }
   }
 };
-function playDisabled(view) {
-  return !view.stationId || !view.available || view.playing || view.buffering;
+function playDisabled(view, selected) {
+  const stationId = selected?.id || view.stationId;
+  return !stationId || !view.available || view.playing || view.buffering;
 }
 function stopDisabled(view) {
   return !view.owned && !view.playing && !view.buffering;
@@ -755,8 +875,10 @@ function stateLabel(view, pending) {
   }
   return "Idle";
 }
-function metaLine(view) {
-  return [view.networkLabel, view.speakerEntityId].filter(Boolean).join(" \xB7 ");
+function metaLine(view, selected) {
+  const network = networkLabel(selected?.network || view.network) ?? view.networkLabel;
+  const speaker = view.speakers.find((item) => item.id === view.speakerEntityId)?.name || view.speakerEntityId;
+  return [network, speaker].filter(Boolean).join(" \xB7 ");
 }
 function escapeHtml(value) {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -811,6 +933,7 @@ var DifmRadioCardEditor = class extends HTMLElement {
           <option value="">Use integration default</option>
           ${speakers.map((id) => option(id, config.media_player)).join("")}
         </select>
+        <div class="hint">Optional starting speaker. The card also has a speaker dropdown.</div>
       </div>
       <div class="field">
         <label for="title">Title</label>
@@ -881,7 +1004,7 @@ function mediaPlayers(hass) {
   if (!hass) {
     return [];
   }
-  return Object.keys(hass.states).filter((entityId) => entityId.startsWith("media_player.")).sort();
+  return Object.keys(hass.states).filter((entityId) => entityId.startsWith("media_player.") && !isRadioEntity(hass, entityId)).sort();
 }
 function option(value, selected) {
   return `<option value="${escapeAttr2(value)}" ${value === selected ? "selected" : ""}>${escapeAttr2(value)}</option>`;
