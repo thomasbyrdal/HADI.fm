@@ -2,6 +2,9 @@ export const CARD_STYLES = `
 :host {
   display: block;
 }
+[hidden] {
+  display: none !important;
+}
 .card {
   background: var(--ha-card-background, var(--card-background-color, #fff));
   color: var(--primary-text-color, #212121);

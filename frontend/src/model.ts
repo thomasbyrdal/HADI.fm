@@ -98,22 +98,35 @@ export function listSpeakers(
   radioEntityId: string,
   selectedId: string | null,
 ): SpeakerChoice[] {
-  if (!hass?.states) {
-    return selectedId ? [{ id: selectedId, name: speakerLabel(hass, selectedId) }] : [];
+  const byId = new Map<string, SpeakerChoice>();
+  if (hass?.states) {
+    for (const entityId of Object.keys(hass.states)) {
+      if (!isSpeakerEntity(hass, entityId, radioEntityId)) {
+        continue;
+      }
+      byId.set(entityId, { id: entityId, name: speakerLabel(hass, entityId) });
+    }
   }
-  const speakers = Object.keys(hass.states)
-    .filter(
-      (entityId) =>
-        entityId.startsWith("media_player.") &&
-        entityId !== radioEntityId &&
-        !isRadioEntity(hass, entityId),
-    )
-    .sort()
-    .map((id) => ({ id, name: speakerLabel(hass, id) }));
-  if (selectedId && !speakers.some((item) => item.id === selectedId)) {
-    speakers.unshift({ id: selectedId, name: speakerLabel(hass, selectedId) });
+  if (selectedId && isSpeakerEntity(hass, selectedId, radioEntityId) && !byId.has(selectedId)) {
+    byId.set(selectedId, { id: selectedId, name: speakerLabel(hass, selectedId) });
   }
-  return speakers;
+  return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function speakerIds(speakers: SpeakerChoice[]): string {
+  return speakers.map((item) => item.id).sort().join("|");
+}
+
+function isSpeakerEntity(
+  hass: HomeAssistant | null | undefined,
+  entityId: string,
+  radioEntityId: string,
+): boolean {
+  return (
+    /^media_player\.[A-Za-z0-9_]+$/.test(entityId) &&
+    entityId !== radioEntityId &&
+    !isRadioEntity(hass, entityId)
+  );
 }
 
 export function entitySuggestion(
@@ -270,7 +283,7 @@ export function viewSignature(view: CardView): string {
     owned: view.owned,
     lastError: view.lastErrorCode,
     speakerEntityId: view.speakerEntityId,
-    speakers: view.speakers,
+    speakers: speakerIds(view.speakers),
     volume: view.volume,
     favourites: view.favourites,
     stationArtwork: view.stationArtwork,
@@ -278,20 +291,17 @@ export function viewSignature(view: CardView): string {
 }
 
 export function shouldIgnoreTap(
-  pending: boolean,
+  pendingStation: string | null,
   lastTapAt: number,
   now: number,
   stationId: string,
   playingStationId: string | null,
   playing: boolean,
 ): boolean {
-  if (pending) {
+  if (stationId === pendingStation || (playing && stationId === playingStationId)) {
     return true;
   }
-  if (now - lastTapAt < TAP_DEBOUNCE_MS) {
-    return true;
-  }
-  return playing && playingStationId === stationId;
+  return Boolean(lastTapAt && now - lastTapAt < TAP_DEBOUNCE_MS && stationId === playingStationId);
 }
 
 export function playServiceData(stationId: string, speakerOverride: string): Record<string, string> {

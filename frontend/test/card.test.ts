@@ -94,6 +94,32 @@ describe("DifmRadioCard", () => {
     expect(card.shadowRoot!.querySelector(".station-select")).toBeNull();
   });
 
+  it("starts playback from a favourite tile and keeps one speaker list", async () => {
+    const hass = createHass({
+      "media_player.kitchen": entity("media_player.kitchen", "idle", {
+        friendly_name: "Kitchen",
+        volume_level: 0.2,
+        supported_features: 4,
+      }),
+    });
+    const { card } = mount(hass);
+    const initial = card.shadowRoot!.querySelectorAll(".speaker-select option").length;
+    for (const stationId of ["1", "12", "1", "12"]) {
+      card.shadowRoot!.querySelector<HTMLButtonElement>(`[data-station-id="${stationId}"]`)!.click();
+      await Promise.resolve();
+      hass.states["media_player.di_fm_radio"].state = "playing";
+      hass.states["media_player.di_fm_radio"].attributes = {
+        ...hass.states["media_player.di_fm_radio"].attributes,
+        station_id: stationId,
+        owned: true,
+      };
+      card.hass = hass;
+    }
+    expect(hass.calls.filter((call) => call.service === "play_station")).toHaveLength(4);
+    expect(card.shadowRoot!.querySelectorAll(".speaker-select option").length).toBe(initial);
+    expect(initial).toBeGreaterThan(1);
+  });
+
   it("calls play_station when a tile is clicked", async () => {
     const { card, hass } = mount();
     const trance = card.shadowRoot!.querySelector<HTMLButtonElement>('[data-station-id="1"]')!;
@@ -199,7 +225,7 @@ describe("DifmRadioCard", () => {
       },
     });
     const { card } = mount(hass);
-    expect(card.shadowRoot!.querySelector(".vol")).toBeNull();
+    expect(card.shadowRoot!.querySelector<HTMLElement>(".volume")?.hidden).toBe(true);
     expect(card.shadowRoot!.textContent).toContain("does not support volume control");
   });
 

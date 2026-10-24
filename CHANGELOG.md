@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5 — 2026-10-24
+
+- Start playback as soon as a favourite icon is tapped
+- Update now-playing in place so the card no longer flickers or duplicates speakers
+
 ## 0.1.4 — 2026-10-24
 
 - Register the Lovelace card as a Dashboard resource so Home Assistant can find **DI.FM favourite stations**

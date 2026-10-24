@@ -5,6 +5,7 @@ import {
   entitySuggestion,
   errorMessage,
   findRadioEntity,
+  listSpeakers,
   normalizeConfig,
   resolveRadioEntity,
   parseFavourites,
@@ -28,6 +29,19 @@ describe("normalizeConfig", () => {
     });
     expect(normalizeConfig({ columns: 12, show_names: false }).columns).toBe(8);
     expect(() => normalizeConfig(null)).toThrow("Invalid configuration");
+  });
+});
+
+describe("listSpeakers", () => {
+  it("lists each speaker once and skips the radio entity", () => {
+    const hass = createHass({
+      "media_player.kitchen": entity("media_player.kitchen", "idle", { friendly_name: "Kitchen" }),
+    });
+    const speakers = listSpeakers(hass, "media_player.di_fm_radio", "media_player.living_room");
+    const ids = speakers.map((item) => item.id);
+    expect(ids).toEqual(["media_player.kitchen", "media_player.living_room"]);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).not.toContain("media_player.di_fm_radio");
   });
 });
 
@@ -119,10 +133,11 @@ describe("helpers", () => {
   });
 
   it("ignores duplicate and in-flight taps", () => {
-    expect(shouldIgnoreTap(true, 0, 1000, "1", null, false)).toBe(true);
-    expect(shouldIgnoreTap(false, 900, 1000, "1", null, false)).toBe(true);
-    expect(shouldIgnoreTap(false, 0, 1000, "1", "1", true)).toBe(true);
-    expect(shouldIgnoreTap(false, 0, 1000, "12", "1", true)).toBe(false);
+    expect(shouldIgnoreTap("1", 0, 1000, "1", null, false)).toBe(true);
+    expect(shouldIgnoreTap(null, 900, 1000, "1", "1", false)).toBe(true);
+    expect(shouldIgnoreTap(null, 0, 1000, "1", "1", true)).toBe(true);
+    expect(shouldIgnoreTap(null, 0, 1000, "12", "1", true)).toBe(false);
+    expect(shouldIgnoreTap("1", 0, 1000, "12", "1", true)).toBe(false);
   });
 
   it("builds play service data with an optional speaker override", () => {

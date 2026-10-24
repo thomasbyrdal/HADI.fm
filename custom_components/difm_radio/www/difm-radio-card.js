@@ -76,16 +76,25 @@ function speakerLabel(hass, entityId) {
   return entityId.replace(/^media_player\./, "").replace(/_/g, " ");
 }
 function listSpeakers(hass, radioEntityId, selectedId) {
-  if (!hass?.states) {
-    return selectedId ? [{ id: selectedId, name: speakerLabel(hass, selectedId) }] : [];
+  const byId = /* @__PURE__ */ new Map();
+  if (hass?.states) {
+    for (const entityId of Object.keys(hass.states)) {
+      if (!isSpeakerEntity(hass, entityId, radioEntityId)) {
+        continue;
+      }
+      byId.set(entityId, { id: entityId, name: speakerLabel(hass, entityId) });
+    }
   }
-  const speakers = Object.keys(hass.states).filter(
-    (entityId) => entityId.startsWith("media_player.") && entityId !== radioEntityId && !isRadioEntity(hass, entityId)
-  ).sort().map((id) => ({ id, name: speakerLabel(hass, id) }));
-  if (selectedId && !speakers.some((item) => item.id === selectedId)) {
-    speakers.unshift({ id: selectedId, name: speakerLabel(hass, selectedId) });
+  if (selectedId && isSpeakerEntity(hass, selectedId, radioEntityId) && !byId.has(selectedId)) {
+    byId.set(selectedId, { id: selectedId, name: speakerLabel(hass, selectedId) });
   }
-  return speakers;
+  return [...byId.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+function speakerIds(speakers) {
+  return speakers.map((item) => item.id).sort().join("|");
+}
+function isSpeakerEntity(hass, entityId, radioEntityId) {
+  return /^media_player\.[A-Za-z0-9_]+$/.test(entityId) && entityId !== radioEntityId && !isRadioEntity(hass, entityId);
 }
 function entitySuggestion(hass, entityId) {
   if (!isRadioEntity(hass, entityId)) {
@@ -216,20 +225,17 @@ function viewSignature(view) {
     owned: view.owned,
     lastError: view.lastErrorCode,
     speakerEntityId: view.speakerEntityId,
-    speakers: view.speakers,
+    speakers: speakerIds(view.speakers),
     volume: view.volume,
     favourites: view.favourites,
     stationArtwork: view.stationArtwork
   });
 }
-function shouldIgnoreTap(pending, lastTapAt, now, stationId, playingStationId, playing) {
-  if (pending) {
+function shouldIgnoreTap(pendingStation, lastTapAt, now, stationId, playingStationId, playing) {
+  if (stationId === pendingStation || playing && stationId === playingStationId) {
     return true;
   }
-  if (now - lastTapAt < TAP_DEBOUNCE_MS) {
-    return true;
-  }
-  return playing && playingStationId === stationId;
+  return Boolean(lastTapAt && now - lastTapAt < TAP_DEBOUNCE_MS && stationId === playingStationId);
 }
 function playServiceData(stationId, speakerOverride) {
   const data = { station_id: stationId };
@@ -277,6 +283,9 @@ function readVolume(value) {
 var CARD_STYLES = `
 :host {
   display: block;
+}
+[hidden] {
+  display: none !important;
 }
 .card {
   background: var(--ha-card-background, var(--card-background-color, #fff));
@@ -600,6 +609,8 @@ var DifmRadioCard = class extends HTMLElement {
   _pendingStation = null;
   _localError = null;
   _lastTapAt = 0;
+  _bound = false;
+  _speakerKey = "";
   static getStubConfig(hass) {
     return {
       type: CARD_TYPE,
@@ -614,7 +625,11 @@ var DifmRadioCard = class extends HTMLElement {
   }
   setConfig(config) {
     this._config = normalizeConfig(config);
-    this._render();
+    if (this._hass) {
+      this._view = deriveView(this._hass, this._config);
+      this._signature = viewSignature(this._view);
+    }
+    this._render(false);
   }
   set hass(hass) {
     this._hass = hass;
@@ -626,7 +641,7 @@ var DifmRadioCard = class extends HTMLElement {
     }
     this._view = view;
     this._signature = signature;
-    this._render();
+    this._render(false);
   }
   getCardSize() {
     return cardSize(this._view.favourites.length, this._config.columns);
@@ -635,172 +650,331 @@ var DifmRadioCard = class extends HTMLElement {
     return { columns: 12, min_rows: 4 };
   }
   connectedCallback() {
-    this._render();
+    this._render(false);
   }
   disconnectedCallback() {
     this._pendingStation = null;
   }
-  _render() {
+  _render(force) {
     if (!this.shadowRoot) {
       this.attachShadow({ mode: "open" });
     }
+    const card = this.shadowRoot.querySelector(".card");
+    if (!card || force) {
+      this._mount();
+      return;
+    }
+    this._patch();
+  }
+  _mount() {
     const view = this._view;
-    const error = this._localError || view.lastError;
     const rootTag = customElements.get("ha-card") ? "ha-card" : "div";
     this.shadowRoot.innerHTML = `
       <style>${CARD_STYLES}</style>
       <${rootTag} class="card">
         <div class="header">
-          <div class="title">${escapeHtml(this._config.title)}</div>
-          <div class="state">${escapeHtml(stateLabel(view, this._pendingStation))}</div>
+          <div class="title"></div>
+          <div class="state"></div>
         </div>
-        ${this._speakerHtml(view)}
-        ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
-        ${this._gridHtml(view)}
-        ${this._nowPlayingHtml(view)}
+        <div class="speaker">
+          <label for="speaker">Speaker</label>
+          <select id="speaker" class="speaker-select" aria-label="Choose a speaker"></select>
+          <div class="empty speaker-empty" hidden>No Home Assistant speakers were found.</div>
+        </div>
+        <div class="error" role="alert" hidden></div>
+        <div class="grid-host"></div>
+        <section class="now-playing" aria-label="Now playing">
+          <div class="hero-art placeholder">${ICON_RADIO}</div>
+          <div class="hero-body">
+            <div class="now-name">Select a station</div>
+            <div class="now-meta"></div>
+            <div class="buttons">
+              <button class="icon-button play" type="button" aria-label="Play">${ICON_PLAY}</button>
+              <button class="icon-button stop" type="button" aria-label="Stop">${ICON_STOP}</button>
+            </div>
+            <div class="volume">
+              <input class="vol" type="range" min="0" max="100" step="1" value="0" aria-label="Speaker volume">
+              <span class="vol-label">0%</span>
+            </div>
+            <div class="volume-hint" hidden>This speaker does not support volume control.</div>
+          </div>
+        </section>
       </${rootTag}>
     `;
+    this._speakerKey = "";
     this._bind();
-  }
-  _speakerHtml(view) {
-    if (!view.speakers.length) {
-      return `<div class="speaker">
-        <label for="speaker">Speaker</label>
-        <div class="empty">No Home Assistant speakers were found.</div>
-      </div>`;
-    }
-    const selected = view.speakerEntityId || "";
-    return `<div class="speaker">
-      <label for="speaker">Speaker</label>
-      <select id="speaker" class="speaker-select" aria-label="Choose a speaker" ${this._pendingStation ? "disabled" : ""}>
-        ${view.speakers.map((speaker) => {
-      const isSelected = speaker.id === selected ? "selected" : "";
-      return `<option value="${escapeAttr(speaker.id)}" ${isSelected}>${escapeHtml(speaker.name)}</option>`;
-    }).join("")}
-      </select>
-    </div>`;
-  }
-  _gridHtml(view) {
-    if (view.missingEntity) {
-      return `<div class="empty">Select the DI.FM Radio media player in the card editor.</div>`;
-    }
-    if (!view.available) {
-      return `<div class="empty">DI.FM Radio is unavailable.</div>`;
-    }
-    if (!view.favourites.length) {
-      return `<div class="empty">Add favourite stations under Settings \u2192 Devices &amp; services \u2192 DI.FM Radio \u2192 Configure \u2192 Favourite stations.</div>`;
-    }
-    const gridClass = this._config.columns > 0 ? "grid fixed" : "grid";
-    const columns = this._config.columns > 0 ? `--columns:${this._config.columns};` : "";
-    return `<div class="${gridClass}" style="${columns}" role="list">
-      ${view.favourites.map((tile) => this._tileHtml(tile, view)).join("")}
-    </div>`;
-  }
-  _tileHtml(tile, view) {
-    const currentId = this._pendingStation || view.stationId;
-    const active = Boolean(tile.playing || currentId === tile.id && (view.playing || view.buffering || this._pendingStation));
-    const loading = this._pendingStation === tile.id || view.buffering && view.stationId === tile.id;
-    const disabled = !tile.available || Boolean(this._pendingStation);
-    const art = tile.artwork_url ? `<img src="${escapeAttr(tile.artwork_url)}" alt="" loading="lazy">` : ICON_RADIO;
-    return `<button class="tile${tile.available ? "" : " unavailable"}" type="button" role="listitem"
-      data-station-id="${escapeAttr(tile.id)}" aria-pressed="${active ? "true" : "false"}"
-      ${disabled ? "disabled" : ""} title="${escapeAttr(tile.name)}">
-      <span class="art">${art}</span>
-      ${this._config.show_names ? `<span class="name">${escapeHtml(tile.name)}</span>` : ""}
-      ${this._config.show_service_labels ? `<span class="service">${escapeHtml(networkLabel(tile.network) ?? tile.network)}</span>` : ""}
-      ${loading ? `<span class="spinner" aria-hidden="true"></span>` : ""}
-    </button>`;
-  }
-  _nowPlayingHtml(view) {
-    const selected = selectedFavourite(view.favourites, this._pendingStation || view.stationId);
-    const name = selected?.name || view.stationName || "Select a station";
-    const artwork = selected?.artwork_url || view.stationArtwork;
-    const art = artwork ? `<img src="${escapeAttr(artwork)}" alt="${escapeAttr(name)}">` : ICON_RADIO;
-    return `<section class="now-playing" aria-label="Now playing">
-      <div class="hero-art${artwork ? "" : " placeholder"}">${art}</div>
-      <div class="hero-body">
-        <div class="now-name">${escapeHtml(name)}</div>
-        <div class="now-meta">${escapeHtml(metaLine(view, selected))}</div>
-        <div class="buttons">
-          <button class="icon-button play" type="button" aria-label="Play" ${playDisabled(view, selected) ? "disabled" : ""}>
-            ${ICON_PLAY}
-          </button>
-          <button class="icon-button stop" type="button" aria-label="Stop" ${stopDisabled(view) ? "disabled" : ""}>
-            ${ICON_STOP}
-          </button>
-        </div>
-        ${this._volumeHtml(view)}
-      </div>
-    </section>`;
-  }
-  _volumeHtml(view) {
-    if (!this._config.show_volume) {
-      return "";
-    }
-    if (!view.volume.supported) {
-      return `<div class="volume-hint">This speaker does not support volume control.</div>`;
-    }
-    const percent = view.volume.level == null ? 0 : Math.round(view.volume.level * 100);
-    return `<div class="volume">
-      <input class="vol" type="range" min="0" max="100" step="1" value="${percent}"
-        aria-label="Speaker volume" ${this._pendingStation ? "disabled" : ""}>
-      <span class="vol-label">${percent}%</span>
-    </div>`;
+    this._patch();
   }
   _bind() {
-    this.shadowRoot?.querySelector(".speaker-select")?.addEventListener("change", (event) => {
+    if (this._bound || !this.shadowRoot) {
+      return;
+    }
+    this._bound = true;
+    const select = this.shadowRoot.querySelector(".speaker-select");
+    select?.addEventListener("change", (event) => {
       this._setSpeaker(event.target.value);
     });
-    this.shadowRoot?.querySelectorAll(".tile").forEach((button) => {
-      button.addEventListener("click", () => {
-        const stationId = button.dataset.stationId;
-        if (stationId) {
-          void this._play(stationId);
-        }
-      });
-    });
-    this.shadowRoot?.querySelector(".play")?.addEventListener("click", () => {
-      const stationId = this._pendingStation || this._view.stationId;
-      if (stationId) {
-        void this._play(stationId);
-      }
-    });
-    this.shadowRoot?.querySelector(".stop")?.addEventListener("click", () => {
-      void this._stop();
-    });
-    const slider = this.shadowRoot?.querySelector(".vol");
+    const slider = this.shadowRoot.querySelector(".vol");
     slider?.addEventListener("input", () => {
       const label = this.shadowRoot?.querySelector(".vol-label");
-      if (label) {
+      if (slider && label) {
         label.textContent = `${slider.value}%`;
       }
     });
     slider?.addEventListener("change", () => {
-      void this._setVolume(Number(slider.value) / 100);
+      if (slider) {
+        void this._setVolume(Number(slider.value) / 100);
+      }
     });
-    this.shadowRoot?.querySelectorAll("img").forEach((img) => {
-      img.addEventListener("error", () => {
-        const art = img.closest(".art, .hero-art");
-        if (art) {
-          art.innerHTML = ICON_RADIO;
-          art.classList.add("placeholder");
+    this.shadowRoot.addEventListener("click", (event) => {
+      const target = event.target;
+      if (!target) {
+        return;
+      }
+      const tile = target.closest(".tile");
+      if (tile?.dataset.stationId) {
+        void this._play(tile.dataset.stationId);
+        return;
+      }
+      if (target.closest(".play")) {
+        const stationId = this._pendingStation || this._view.stationId;
+        if (stationId) {
+          void this._play(stationId);
         }
-      });
+        return;
+      }
+      if (target.closest(".stop")) {
+        void this._stop();
+      }
     });
   }
+  _patch() {
+    const root = this.shadowRoot;
+    if (!root) {
+      return;
+    }
+    const view = this._view;
+    const error = this._localError || view.lastError;
+    setText(root.querySelector(".title"), this._config.title);
+    setText(root.querySelector(".state"), stateLabel(view, this._pendingStation));
+    const errorEl = root.querySelector(".error");
+    if (errorEl) {
+      errorEl.hidden = !error;
+      errorEl.textContent = error || "";
+    }
+    this._patchSpeakers(view);
+    this._patchGrid(view);
+    this._patchNowPlaying(view);
+  }
+  _patchSpeakers(view) {
+    const select = this.shadowRoot?.querySelector(".speaker-select");
+    const empty = this.shadowRoot?.querySelector(".speaker-empty");
+    if (!select || !empty) {
+      return;
+    }
+    if (!view.speakers.length) {
+      select.hidden = true;
+      empty.hidden = false;
+      this._speakerKey = "";
+      return;
+    }
+    select.hidden = false;
+    empty.hidden = true;
+    const nextKey = speakerIds(view.speakers);
+    if (nextKey !== this._speakerKey) {
+      const options = document.createDocumentFragment();
+      for (const speaker of view.speakers) {
+        const option2 = document.createElement("option");
+        option2.value = speaker.id;
+        option2.textContent = speaker.name;
+        options.append(option2);
+      }
+      select.replaceChildren(options);
+      this._speakerKey = nextKey;
+    }
+    const selected = view.speakerEntityId || view.speakers[0]?.id || "";
+    if (selected && select.value !== selected) {
+      select.value = selected;
+    }
+    select.disabled = false;
+  }
+  _patchGrid(view) {
+    const host = this.shadowRoot?.querySelector(".grid-host");
+    if (!host) {
+      return;
+    }
+    if (view.missingEntity) {
+      host.innerHTML = `<div class="empty">Select the DI.FM Radio media player in the card editor.</div>`;
+      return;
+    }
+    if (!view.available) {
+      host.innerHTML = `<div class="empty">DI.FM Radio is unavailable.</div>`;
+      return;
+    }
+    if (!view.favourites.length) {
+      host.innerHTML = `<div class="empty">Add favourite stations under Settings \u2192 Devices &amp; services \u2192 DI.FM Radio \u2192 Configure \u2192 Favourite stations.</div>`;
+      return;
+    }
+    let grid = host.querySelector(".grid");
+    const favouriteKey = view.favourites.map((tile) => tile.id).join("|");
+    if (!grid || grid.dataset.ids !== favouriteKey) {
+      const gridClass = this._config.columns > 0 ? "grid fixed" : "grid";
+      const columns = this._config.columns > 0 ? `--columns:${this._config.columns};` : "";
+      host.innerHTML = `<div class="${gridClass}" style="${columns}" role="list" data-ids="${escapeAttr(favouriteKey)}"></div>`;
+      grid = host.querySelector(".grid");
+      if (grid) {
+        grid.replaceChildren(...view.favourites.map((tile) => this._createTile(tile)));
+      }
+    }
+    view.favourites.forEach((tile) => this._patchTile(tile, view));
+  }
+  _createTile(tile) {
+    const button = document.createElement("button");
+    button.className = "tile";
+    button.type = "button";
+    button.setAttribute("role", "listitem");
+    button.dataset.stationId = tile.id;
+    button.title = tile.name;
+    const art = document.createElement("span");
+    art.className = "art";
+    if (tile.artwork_url) {
+      const img = document.createElement("img");
+      img.src = tile.artwork_url;
+      img.alt = "";
+      img.loading = "lazy";
+      img.addEventListener("error", () => {
+        art.innerHTML = ICON_RADIO;
+      });
+      art.append(img);
+    } else {
+      art.innerHTML = ICON_RADIO;
+    }
+    button.append(art);
+    if (this._config.show_names) {
+      const name = document.createElement("span");
+      name.className = "name";
+      name.textContent = tile.name;
+      button.append(name);
+    }
+    if (this._config.show_service_labels) {
+      const service = document.createElement("span");
+      service.className = "service";
+      service.textContent = networkLabel(tile.network) ?? tile.network;
+      button.append(service);
+    }
+    const spinner = document.createElement("span");
+    spinner.className = "spinner";
+    spinner.hidden = true;
+    spinner.setAttribute("aria-hidden", "true");
+    button.append(spinner);
+    return button;
+  }
+  _patchTile(tile, view) {
+    const button = this.shadowRoot?.querySelector(
+      `.tile[data-station-id="${cssEscape(tile.id)}"]`
+    );
+    if (!button) {
+      return;
+    }
+    const currentId = this._pendingStation || view.stationId;
+    const active = Boolean(
+      tile.playing || currentId === tile.id && (view.playing || view.buffering || this._pendingStation)
+    );
+    const loading = this._pendingStation === tile.id || view.buffering && view.stationId === tile.id;
+    button.classList.toggle("unavailable", !tile.available);
+    button.disabled = !tile.available;
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+    const spinner = button.querySelector(".spinner");
+    if (spinner) {
+      spinner.hidden = !loading;
+    }
+  }
+  _patchNowPlaying(view) {
+    const selected = selectedFavourite(view.favourites, this._pendingStation || view.stationId);
+    const name = selected?.name || view.stationName || "Select a station";
+    const artwork = selected?.artwork_url || view.stationArtwork;
+    const hero = this.shadowRoot?.querySelector(".hero-art");
+    if (hero) {
+      const current = hero.querySelector("img")?.getAttribute("src") || "";
+      if (artwork && current !== artwork) {
+        hero.classList.remove("placeholder");
+        hero.innerHTML = `<img src="${escapeAttr(artwork)}" alt="${escapeAttr(name)}">`;
+        const img = hero.querySelector("img");
+        img?.addEventListener("error", () => {
+          hero.classList.add("placeholder");
+          hero.innerHTML = ICON_RADIO;
+        });
+      } else if (!artwork && !hero.classList.contains("placeholder")) {
+        hero.classList.add("placeholder");
+        hero.innerHTML = ICON_RADIO;
+      }
+    }
+    setText(this.shadowRoot?.querySelector(".now-name") ?? null, name);
+    setText(this.shadowRoot?.querySelector(".now-meta") ?? null, metaLine(view, selected));
+    const play = this.shadowRoot?.querySelector(".play");
+    const stop = this.shadowRoot?.querySelector(".stop");
+    if (play) {
+      play.disabled = playDisabled(view, selected);
+    }
+    if (stop) {
+      stop.disabled = stopDisabled(view);
+    }
+    this._patchVolume(view);
+  }
+  _patchVolume(view) {
+    const slider = this.shadowRoot?.querySelector(".vol");
+    const label = this.shadowRoot?.querySelector(".vol-label");
+    const row = this.shadowRoot?.querySelector(".volume");
+    const hint = this.shadowRoot?.querySelector(".volume-hint");
+    if (!this._config.show_volume) {
+      if (row) {
+        row.hidden = true;
+      }
+      if (hint) {
+        hint.hidden = true;
+      }
+      return;
+    }
+    if (!view.volume.supported) {
+      if (row) {
+        row.hidden = true;
+      }
+      if (hint) {
+        hint.hidden = false;
+      }
+      return;
+    }
+    if (row) {
+      row.hidden = false;
+    }
+    if (hint) {
+      hint.hidden = true;
+    }
+    const percent = view.volume.level == null ? 0 : Math.round(view.volume.level * 100);
+    if (slider && slider.value !== String(percent) && this.shadowRoot?.activeElement !== slider) {
+      slider.value = String(percent);
+    }
+    if (label && this.shadowRoot?.activeElement !== slider) {
+      label.textContent = `${percent}%`;
+    }
+    if (slider) {
+      slider.disabled = false;
+    }
+  }
   _setSpeaker(entityId) {
+    if (!entityId || entityId === this._config.media_player) {
+      return;
+    }
     const next = {
       type: CARD_TYPE,
       entity: this._config.entity,
+      media_player: entityId,
       title: this._config.title,
       columns: this._config.columns,
       show_names: this._config.show_names,
       show_service_labels: this._config.show_service_labels,
       show_volume: this._config.show_volume
     };
-    if (entityId) {
-      next.media_player = entityId;
-    }
     this._config = normalizeConfig(next);
     this.dispatchEvent(
       new CustomEvent("config-changed", {
@@ -813,11 +987,11 @@ var DifmRadioCard = class extends HTMLElement {
       this._view = deriveView(this._hass, this._config);
       this._signature = viewSignature(this._view);
     }
-    this._render();
+    this._patch();
   }
   async _play(stationId) {
     if (shouldIgnoreTap(
-      Boolean(this._pendingStation),
+      this._pendingStation,
       this._lastTapAt,
       Date.now(),
       stationId,
@@ -829,7 +1003,7 @@ var DifmRadioCard = class extends HTMLElement {
     this._lastTapAt = Date.now();
     this._pendingStation = stationId;
     this._localError = null;
-    this._render();
+    this._patch();
     try {
       await this._hass?.callService(
         DOMAIN,
@@ -839,8 +1013,10 @@ var DifmRadioCard = class extends HTMLElement {
     } catch (err) {
       this._localError = errorMessage(null, sanitizeError(err instanceof Error ? err.message : String(err)));
     } finally {
-      this._pendingStation = null;
-      this._render();
+      if (this._pendingStation === stationId) {
+        this._pendingStation = null;
+      }
+      this._patch();
     }
   }
   async _stop() {
@@ -849,7 +1025,7 @@ var DifmRadioCard = class extends HTMLElement {
       await this._hass?.callService(DOMAIN, STOP, {});
     } catch (err) {
       this._localError = errorMessage(null, sanitizeError(err instanceof Error ? err.message : String(err)));
-      this._render();
+      this._patch();
     }
   }
   async _setVolume(level) {
@@ -864,7 +1040,7 @@ var DifmRadioCard = class extends HTMLElement {
       });
     } catch (err) {
       this._localError = errorMessage(null, sanitizeError(err instanceof Error ? err.message : String(err)));
-      this._render();
+      this._patch();
     }
   }
 };
@@ -895,11 +1071,16 @@ function metaLine(view, selected) {
   const speaker = view.speakers.find((item) => item.id === view.speakerEntityId)?.name || view.speakerEntityId;
   return [network, speaker].filter(Boolean).join(" \xB7 ");
 }
-function escapeHtml(value) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function setText(element, value) {
+  if (element && element.textContent !== value) {
+    element.textContent = value;
+  }
 }
 function escapeAttr(value) {
-  return escapeHtml(value);
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function cssEscape(value) {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 // src/editor.ts
