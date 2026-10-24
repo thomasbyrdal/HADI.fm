@@ -66,7 +66,13 @@ Stream quality (official Premium copy):
 
 ## Lovelace card
 
-The integration registers `custom:difm-radio-card` as a frontend module at `/difm_radio/difm-radio-card.js`. After a restart, **Edit dashboard → Add card → DI.FM Radio**.
+The integration registers `custom:difm-radio-card` as a frontend module at `/difm_radio/difm-radio-card.js`. After a restart:
+
+1. **Edit dashboard → Add card**
+2. Open the **By card** tab (or **Browse all cards**). Searching **DI.FM** on the **By entity** tab only shows built-in media-player tiles.
+3. Choose **DI.FM favourite stations**
+
+From Home Assistant 2026.6, selecting the `media_player.di_fm_radio` entity also lists this card under **Community**.
 
 The card layout is:
 
@@ -74,7 +80,7 @@ The card layout is:
 2. Favourite stations as artwork icons
 3. Large artwork for the selected station, with play, stop, and volume
 
-Do not add the generic media-player card for `media_player.di_fm_radio` if you want that layout. The logical player also exposes **Browse media**.
+Do not add the generic media-player tiles (title only, playback controls, volume slider). Those are Home Assistant's built-in cards. The logical player also exposes **Browse media**.
 
 Mockup: [docs/screenshots/card-mockup.svg](docs/screenshots/card-mockup.svg)
 

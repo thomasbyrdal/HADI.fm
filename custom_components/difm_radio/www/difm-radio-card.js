@@ -87,6 +87,18 @@ function listSpeakers(hass, radioEntityId, selectedId) {
   }
   return speakers;
 }
+function entitySuggestion(hass, entityId) {
+  if (!isRadioEntity(hass, entityId)) {
+    return null;
+  }
+  return {
+    label: "Favourite stations",
+    config: {
+      type: CARD_TYPE,
+      entity: entityId
+    }
+  };
+}
 function selectedFavourite(favourites, stationId) {
   if (!stationId) {
     return null;
@@ -619,6 +631,9 @@ var DifmRadioCard = class extends HTMLElement {
   getCardSize() {
     return cardSize(this._view.favourites.length, this._config.columns);
   }
+  getGridOptions() {
+    return { columns: 12, min_rows: 4 };
+  }
   connectedCallback() {
     this._render();
   }
@@ -1025,9 +1040,10 @@ win.customCards = win.customCards || [];
 if (!win.customCards.some((card) => card.type === "difm-radio-card")) {
   win.customCards.push({
     type: "difm-radio-card",
-    name: "DI.FM Radio",
-    description: "Play favourite DI.FM stations on a Home Assistant speaker.",
+    name: "DI.FM favourite stations",
+    description: "Speaker dropdown, favourite station icons, and now playing.",
     preview: true,
-    documentationURL: "https://www.di.fm/premium"
+    documentationURL: "https://github.com/thomasbyrdal/HADI.fm",
+    getEntitySuggestion: entitySuggestion
   });
 }

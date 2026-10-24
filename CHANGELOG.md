@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 — 2026-10-24
+
+- Show **DI.FM favourite stations** in the Home Assistant 2026.6 card picker when the DI.FM Radio entity is selected
+
 ## 0.1.2 — 2026-10-24
 
 - Rebuild the Lovelace card: speaker dropdown, favourite station icons, then large now-playing artwork with play, stop, and volume

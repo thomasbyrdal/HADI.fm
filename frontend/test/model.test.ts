@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   cardSize,
   deriveView,
+  entitySuggestion,
   errorMessage,
   findRadioEntity,
   normalizeConfig,
@@ -27,6 +28,17 @@ describe("normalizeConfig", () => {
     });
     expect(normalizeConfig({ columns: 12, show_names: false }).columns).toBe(8);
     expect(() => normalizeConfig(null)).toThrow("Invalid configuration");
+  });
+});
+
+describe("entitySuggestion", () => {
+  it("suggests the favourite card only for the radio entity", () => {
+    const hass = createHass();
+    expect(entitySuggestion(hass, "media_player.living_room")).toBeNull();
+    expect(entitySuggestion(hass, "media_player.di_fm_radio")).toEqual({
+      label: "Favourite stations",
+      config: { type: CARD_TYPE, entity: "media_player.di_fm_radio" },
+    });
   });
 });
 

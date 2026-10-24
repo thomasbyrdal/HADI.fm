@@ -116,6 +116,22 @@ export function listSpeakers(
   return speakers;
 }
 
+export function entitySuggestion(
+  hass: HomeAssistant | null | undefined,
+  entityId: string,
+): { label: string; config: CardConfig } | null {
+  if (!isRadioEntity(hass, entityId)) {
+    return null;
+  }
+  return {
+    label: "Favourite stations",
+    config: {
+      type: CARD_TYPE,
+      entity: entityId,
+    },
+  };
+}
+
 export function selectedFavourite(
   favourites: FavouriteTile[],
   stationId: string | null,

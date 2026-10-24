@@ -1,5 +1,6 @@
 import { DifmRadioCard } from "./card";
 import { DifmRadioCardEditor } from "./editor";
+import { entitySuggestion } from "./model";
 
 if (!customElements.get("difm-radio-card")) {
   customElements.define("difm-radio-card", DifmRadioCard);
@@ -15,9 +16,10 @@ win.customCards = win.customCards || [];
 if (!win.customCards.some((card) => card.type === "difm-radio-card")) {
   win.customCards.push({
     type: "difm-radio-card",
-    name: "DI.FM Radio",
-    description: "Play favourite DI.FM stations on a Home Assistant speaker.",
+    name: "DI.FM favourite stations",
+    description: "Speaker dropdown, favourite station icons, and now playing.",
     preview: true,
-    documentationURL: "https://www.di.fm/premium",
+    documentationURL: "https://github.com/thomasbyrdal/HADI.fm",
+    getEntitySuggestion: entitySuggestion,
   });
 }

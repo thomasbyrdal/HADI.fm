@@ -70,6 +70,10 @@ export class DifmRadioCard extends HTMLElement {
     return cardSize(this._view.favourites.length, this._config.columns);
   }
 
+  getGridOptions(): Record<string, number | string> {
+    return { columns: 12, min_rows: 4 };
+  }
+
   connectedCallback(): void {
     this._render();
   }
