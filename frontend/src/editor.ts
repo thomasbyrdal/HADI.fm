@@ -1,4 +1,4 @@
-import { findRadioEntity, normalizeConfig } from "./model";
+import { findRadioEntity, isRadioEntity, normalizeConfig } from "./model";
 import { EDITOR_STYLES } from "./styles";
 import { CARD_TYPE, type CardConfig, type HomeAssistant, type NormalizedConfig } from "./types";
 
@@ -31,22 +31,24 @@ export class DifmRadioCardEditor extends HTMLElement {
       this.attachShadow({ mode: "open" });
     }
     const config = this._config;
-    const entities = mediaPlayers(this._hass);
+    const radios = radioEntities(this._hass);
+    const speakers = mediaPlayers(this._hass);
+    const entityChoices = radios.length ? radios : speakers;
     this.shadowRoot!.innerHTML = `
       <style>${EDITOR_STYLES}</style>
       <div class="field">
         <label for="entity">DI.FM Radio entity</label>
         <select id="entity">
           <option value="">Select entity</option>
-          ${entities.map((id) => option(id, config.entity)).join("")}
+          ${entityChoices.map((id) => option(id, config.entity)).join("")}
         </select>
-        <div class="hint">Favourites come from this entity, not from the card YAML.</div>
+        <div class="hint">Choose the DI.FM Radio player, not the speaker. Favourites come from this entity.</div>
       </div>
       <div class="field">
         <label for="speaker">Speaker override</label>
         <select id="speaker">
           <option value="">Use integration default</option>
-          ${entities.map((id) => option(id, config.media_player)).join("")}
+          ${speakers.map((id) => option(id, config.media_player)).join("")}
         </select>
       </div>
       <div class="field">
@@ -109,6 +111,15 @@ export class DifmRadioCardEditor extends HTMLElement {
     this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: next } }));
     this._render();
   }
+}
+
+function radioEntities(hass: HomeAssistant | null): string[] {
+  if (!hass) {
+    return [];
+  }
+  return Object.keys(hass.states)
+    .filter((entityId) => isRadioEntity(hass, entityId))
+    .sort();
 }
 
 function mediaPlayers(hass: HomeAssistant | null): string[] {

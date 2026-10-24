@@ -6,6 +6,8 @@ import asyncio
 from typing import Any
 
 from homeassistant.components.media_player import (
+    BrowseMedia,
+    MediaClass,
     MediaPlayerEntity,
     MediaPlayerEntityFeature,
     MediaPlayerState,
@@ -33,6 +35,7 @@ from .playback import (
     DifmRadioRuntime,
     RadioController,
     SpeakerSnapshot,
+    favourite_browse_items,
     playback_attributes,
 )
 
@@ -185,7 +188,11 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
 
     @property
     def supported_features(self) -> MediaPlayerEntityFeature:
-        features = MediaPlayerEntityFeature.PLAY_MEDIA | MediaPlayerEntityFeature.STOP
+        features = (
+            MediaPlayerEntityFeature.PLAY_MEDIA
+            | MediaPlayerEntityFeature.STOP
+            | MediaPlayerEntityFeature.BROWSE_MEDIA
+        )
         if self.controller.state.station:
             features |= MediaPlayerEntityFeature.PLAY
         if self._speaker_supports_volume:
@@ -253,6 +260,31 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
         self._speaker_volume = snapshot.volume_level
         self._speaker_supports_volume = snapshot.supports_volume
 
+    async def async_browse_media(
+        self,
+        media_content_type: str | None = None,
+        media_content_id: str | None = None,
+    ) -> BrowseMedia:
+        items = favourite_browse_items(self._runtime.coordinator.favourite_views)
+        if media_content_id and media_content_id not in {"favourites", ""}:
+            match = next(
+                (item for item in items if item["media_content_id"] == media_content_id),
+                None,
+            )
+            if match is None:
+                raise HomeAssistantError("That station is not in the favourite list.")
+            return _station_browse_media(match)
+        return BrowseMedia(
+            title="Favourite stations",
+            media_class=MediaClass.DIRECTORY,
+            media_content_type="directory",
+            media_content_id="favourites",
+            can_play=False,
+            can_expand=True,
+            children=[_station_browse_media(item) for item in items],
+            children_media_class=MediaClass.CHANNEL,
+        )
+
     async def async_play_media(
         self, media_type: str, media_id: str, **kwargs: Any
     ) -> None:
@@ -286,6 +318,18 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
         self.async_watch_speaker()
         await self._async_refresh_speaker_capabilities()
         self.async_write_ha_state()
+
+
+def _station_browse_media(item: dict[str, Any]) -> BrowseMedia:
+    return BrowseMedia(
+        title=str(item["title"]),
+        media_class=MediaClass.CHANNEL,
+        media_content_type=MediaType.MUSIC,
+        media_content_id=str(item["media_content_id"]),
+        can_play=bool(item["can_play"]),
+        can_expand=False,
+        thumbnail=item.get("thumbnail"),
+    )
 
 
 def _optional_float(value: Any) -> float | None:

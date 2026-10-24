@@ -5,6 +5,7 @@ import {
   errorMessage,
   findRadioEntity,
   normalizeConfig,
+  resolveRadioEntity,
   parseFavourites,
   playServiceData,
   sanitizeError,
@@ -34,6 +35,15 @@ describe("findRadioEntity", () => {
     const hass = createHass();
     hass.states["media_player.other"] = entity("media_player.other", "idle", {});
     expect(findRadioEntity(hass)).toBe("media_player.di_fm_radio");
+  });
+
+  it("falls back to the radio entity when the card points at a speaker", () => {
+    const hass = createHass();
+    const config = normalizeConfig({ entity: "media_player.living_room" });
+    expect(resolveRadioEntity(hass, config)).toBe("media_player.di_fm_radio");
+    const view = deriveView(hass, config);
+    expect(view.entityId).toBe("media_player.di_fm_radio");
+    expect(view.favourites).toHaveLength(3);
   });
 });
 

@@ -22,6 +22,17 @@ Never paste your listen key, Icecast URLs that contain it, or account passwords 
 - Inferred-inactive names (`X` + capital letter) stay in the catalogue but cannot be added as new favourites.
 - A favourite that disappeared is kept and marked unavailable.
 
+## Configure shows three empty arrows
+
+Home Assistant needs `options.step.init.menu_options` translations. Update to 0.1.1 or later, then restart. The menu should list **Favourite stations**, **Default speaker and quality**, **Filter services**, and **Station artwork**. If a form after that is empty, wait until the catalogue refresh finishes and try **Favourite stations** again.
+
+## Card has no stations to play
+
+1. Add **DI.FM Radio**, not a generic media-player card.
+2. In the card editor, set the entity to `media_player.di_fm_radio` (or the integration player), not the speaker.
+3. Confirm **Configure → Favourite stations** still has the stations you picked during setup.
+4. Hard-refresh the browser so it loads `difm-radio-card.js?v=0.1.1`.
+
 ## Card is missing
 
 The integration registers `/difm_radio/difm-radio-card.js` as a frontend module.

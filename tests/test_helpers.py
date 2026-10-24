@@ -106,6 +106,8 @@ def test_station_options_include_service_and_preserved_unavailable() -> None:
     )
     catalogue.networks = []
     extra = [Favourite(id="gone", network="jazzradio", key="old", name="Old Jazz")]
+    empty_filter = build_station_options(catalogue, [], extra)
+    assert "1" in [item["value"] for item in empty_filter]
     options = build_station_options(catalogue, ["di"], extra)
     values = [item["value"] for item in options]
     labels = [item["label"] for item in options]

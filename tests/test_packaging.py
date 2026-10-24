@@ -23,6 +23,12 @@ def test_hacs_and_manifest_required_fields() -> None:
     assert (INTEGRATION / "www" / "difm-radio-card.js").is_file()
     assert (INTEGRATION / "services.yaml").is_file()
     assert (INTEGRATION / "translations" / "en.json").is_file()
+    assert (INTEGRATION / "translations" / "en-GB.json").is_file()
+    strings = json.loads((INTEGRATION / "strings.json").read_text(encoding="utf-8"))
+    menu = strings["options"]["step"]["init"]["menu_options"]
+    assert menu["favourites"]
+    assert menu["player"]
+    assert menu["artwork"]
     assert (ROOT / "LICENSE").is_file()
     assert (ROOT / "CHANGELOG.md").is_file()
 

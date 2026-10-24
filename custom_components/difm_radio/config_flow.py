@@ -342,7 +342,12 @@ class DifmRadioOptionsFlow(OptionsFlow):
 
         return self.async_show_menu(
             step_id="init",
-            menu_options=["player", "favourites_filter", "artwork"],
+            menu_options={
+                "player": "Default speaker and quality",
+                "favourites": "Favourite stations",
+                "favourites_filter": "Filter services before editing favourites",
+                "artwork": "Station artwork",
+            },
         )
 
     async def async_step_player(
@@ -417,7 +422,7 @@ class DifmRadioOptionsFlow(OptionsFlow):
 
         catalogue = await self._async_catalogue()
         previous = parse_favourites(self.config_entry.options.get(CONF_FAVOURITES))
-        options = _station_select_options(catalogue, self._service_keys, previous)
+        options = _station_select_options(catalogue, self._service_keys or None, previous)
         if not options:
             return self.async_abort(reason="no_stations")
 

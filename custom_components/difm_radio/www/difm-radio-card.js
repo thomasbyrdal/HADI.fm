@@ -47,18 +47,26 @@ function normalizeConfig(config) {
     show_volume: config.show_volume !== false
   };
 }
+function isRadioEntity(hass, entityId) {
+  if (!entityId.startsWith("media_player.")) {
+    return false;
+  }
+  const attrs = hass?.states[entityId]?.attributes ?? {};
+  return attrs.integration === DOMAIN || Array.isArray(attrs.favourites);
+}
 function findRadioEntity(hass) {
   if (!hass?.states) {
     return null;
   }
-  const matches = Object.keys(hass.states).filter((entityId) => {
-    if (!entityId.startsWith("media_player.")) {
-      return false;
-    }
-    const attrs = hass.states[entityId]?.attributes ?? {};
-    return attrs.integration === DOMAIN || Array.isArray(attrs.favourites);
-  }).sort();
+  const matches = Object.keys(hass.states).filter((entityId) => isRadioEntity(hass, entityId)).sort();
   return matches[0] ?? null;
+}
+function resolveRadioEntity(hass, config) {
+  const configured = config.entity;
+  if (configured && hass?.states[configured] && isRadioEntity(hass, configured)) {
+    return configured;
+  }
+  return findRadioEntity(hass) || configured || "";
 }
 function networkLabel(network) {
   if (!network) {
@@ -127,7 +135,7 @@ function resolveVolume(hass, config, attrs, logicalVolume, logicalFeatures) {
   };
 }
 function deriveView(hass, config) {
-  const entityId = config.entity || findRadioEntity(hass) || "";
+  const entityId = resolveRadioEntity(hass, config);
   const entity = entityId && hass?.states[entityId] ? hass.states[entityId] : null;
   if (!entity) {
     return emptyView(entityId, !entityId);
@@ -354,6 +362,25 @@ var CARD_STYLES = `
   font-size: 13px;
   padding: 8px 0 12px;
 }
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.picker label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.station-select {
+  width: 100%;
+  font: inherit;
+  color: var(--primary-text-color, #212121);
+  background: var(--mdc-text-field-fill-color, var(--secondary-background-color, #f5f5f5));
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
 .now {
   display: flex;
   align-items: center;
@@ -531,6 +558,7 @@ var DifmRadioCard = class extends HTMLElement {
         </div>
         ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
         ${this._gridHtml(view)}
+        ${this._pickerHtml(view)}
         <div class="now">
           <div class="now-text">
             <div class="now-name">${escapeHtml(view.stationName || "No station playing")}</div>
@@ -558,7 +586,7 @@ var DifmRadioCard = class extends HTMLElement {
       return `<div class="empty">DI.FM Radio is unavailable.</div>`;
     }
     if (!view.favourites.length) {
-      return `<div class="empty">Add favourite stations in the DI.FM Radio integration options.</div>`;
+      return `<div class="empty">Add favourite stations under Settings \u2192 Devices &amp; services \u2192 DI.FM Radio \u2192 Configure \u2192 Favourite stations.</div>`;
     }
     const gridClass = this._config.columns > 0 ? "grid fixed" : "grid";
     const columns = this._config.columns > 0 ? `--columns:${this._config.columns};` : "";
@@ -579,6 +607,23 @@ var DifmRadioCard = class extends HTMLElement {
       ${this._config.show_service_labels ? `<span class="service">${escapeHtml(networkLabel(tile.network) ?? tile.network)}</span>` : ""}
       ${loading ? `<span class="spinner" aria-hidden="true"></span>` : ""}
     </button>`;
+  }
+  _pickerHtml(view) {
+    if (view.missingEntity || !view.available || !view.favourites.length) {
+      return "";
+    }
+    return `<div class="picker">
+      <label for="station">Listen to</label>
+      <select id="station" class="station-select" aria-label="Choose a station" ${this._pendingStation ? "disabled" : ""}>
+        <option value="">Choose a station</option>
+        ${view.favourites.map((tile) => {
+      const selected = view.stationId === tile.id ? "selected" : "";
+      const disabled = tile.available ? "" : "disabled";
+      const label = tile.available ? tile.name : `${tile.name} (unavailable)`;
+      return `<option value="${escapeAttr(tile.id)}" ${selected} ${disabled}>${escapeHtml(label)}</option>`;
+    }).join("")}
+      </select>
+    </div>`;
   }
   _volumeHtml(view) {
     if (!this._config.show_volume) {
@@ -602,6 +647,12 @@ var DifmRadioCard = class extends HTMLElement {
           void this._play(stationId);
         }
       });
+    });
+    this.shadowRoot?.querySelector(".station-select")?.addEventListener("change", (event) => {
+      const stationId = event.target.value;
+      if (stationId) {
+        void this._play(stationId);
+      }
     });
     this.shadowRoot?.querySelector(".play")?.addEventListener("click", () => {
       if (this._view.stationId) {
@@ -741,22 +792,24 @@ var DifmRadioCardEditor = class extends HTMLElement {
       this.attachShadow({ mode: "open" });
     }
     const config = this._config;
-    const entities = mediaPlayers(this._hass);
+    const radios = radioEntities(this._hass);
+    const speakers = mediaPlayers(this._hass);
+    const entityChoices = radios.length ? radios : speakers;
     this.shadowRoot.innerHTML = `
       <style>${EDITOR_STYLES}</style>
       <div class="field">
         <label for="entity">DI.FM Radio entity</label>
         <select id="entity">
           <option value="">Select entity</option>
-          ${entities.map((id) => option(id, config.entity)).join("")}
+          ${entityChoices.map((id) => option(id, config.entity)).join("")}
         </select>
-        <div class="hint">Favourites come from this entity, not from the card YAML.</div>
+        <div class="hint">Choose the DI.FM Radio player, not the speaker. Favourites come from this entity.</div>
       </div>
       <div class="field">
         <label for="speaker">Speaker override</label>
         <select id="speaker">
           <option value="">Use integration default</option>
-          ${entities.map((id) => option(id, config.media_player)).join("")}
+          ${speakers.map((id) => option(id, config.media_player)).join("")}
         </select>
       </div>
       <div class="field">
@@ -818,6 +871,12 @@ var DifmRadioCardEditor = class extends HTMLElement {
     this._render();
   }
 };
+function radioEntities(hass) {
+  if (!hass) {
+    return [];
+  }
+  return Object.keys(hass.states).filter((entityId) => isRadioEntity(hass, entityId)).sort();
+}
 function mediaPlayers(hass) {
   if (!hass) {
     return [];

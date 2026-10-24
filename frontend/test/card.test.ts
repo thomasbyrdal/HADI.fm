@@ -39,8 +39,22 @@ describe("DifmRadioCard", () => {
     expect(card.shadowRoot!.textContent).toContain("Trance");
     expect(card.shadowRoot!.textContent).toContain("DI.FM");
     expect(card.shadowRoot!.querySelector(".tile.unavailable")).toBeTruthy();
+    expect(card.shadowRoot!.querySelector(".station-select")).toBeTruthy();
     expect(card.shadowRoot!.innerHTML).not.toContain("listen_key");
     expect(card.shadowRoot!.innerHTML).not.toContain("prem2.di.fm");
+  });
+
+  it("plays from the station dropdown", async () => {
+    const { card, hass } = mount();
+    const select = card.shadowRoot!.querySelector<HTMLSelectElement>(".station-select")!;
+    select.value = "12";
+    select.dispatchEvent(new Event("change"));
+    await Promise.resolve();
+    expect(hass.calls[0]).toEqual({
+      domain: "difm_radio",
+      service: "play_station",
+      data: { station_id: "12" },
+    });
   });
 
   it("calls play_station when a tile is clicked", async () => {

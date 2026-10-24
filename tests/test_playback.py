@@ -23,6 +23,7 @@ from custom_components.difm_radio.playback import (
     STATE_UNAVAILABLE,
     RadioController,
     SpeakerSnapshot,
+    favourite_browse_items,
     playback_attributes,
 )
 
@@ -435,3 +436,13 @@ async def test_attributes_never_include_stream_url_or_listen_key() -> None:
     assert attrs["favourites"][0]["playing"] is True
     assert attrs["favourites"][0]["artwork_url"]
     assert not attrs["favourites"][0]["artwork_url"].startswith("http://prem")
+    browse = favourite_browse_items(views)
+    assert browse == [
+        {
+            "title": "Trance",
+            "media_content_id": "1",
+            "can_play": True,
+            "thumbnail": views[0].artwork_url,
+        }
+    ]
+    assert LISTEN_KEY not in str(browse)

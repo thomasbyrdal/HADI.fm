@@ -131,6 +131,25 @@ export const CARD_STYLES = `
   font-size: 13px;
   padding: 8px 0 12px;
 }
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.picker label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.station-select {
+  width: 100%;
+  font: inherit;
+  color: var(--primary-text-color, #212121);
+  background: var(--mdc-text-field-fill-color, var(--secondary-background-color, #f5f5f5));
+  border: 1px solid var(--divider-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
 .now {
   display: flex;
   align-items: center;

@@ -54,7 +54,7 @@ See [docs/releasing.md](docs/releasing.md) for GitHub release notes.
 3. Select favourites. Search the dropdown. Order is kept when you edit later.
 4. Choose a default `media_player` and a stream quality.
 
-Options later: **Configure** on the integration. Favourite edits do not reload the entry, so an owned stream is not torn down.
+Options later: **Configure** on the integration. The menu lists **Favourite stations**, **Default speaker and quality**, a service filter, and artwork. Favourite edits do not reload the entry, so an owned stream is not torn down.
 
 Stream quality (official Premium copy):
 
@@ -66,7 +66,7 @@ Stream quality (official Premium copy):
 
 ## Lovelace card
 
-The integration registers `custom:difm-radio-card` as a frontend module at `/difm_radio/difm-radio-card.js`. After a restart, **Edit dashboard → Add card → DI.FM Radio**.
+The integration registers `custom:difm-radio-card` as a frontend module at `/difm_radio/difm-radio-card.js`. After a restart, **Edit dashboard → Add card → DI.FM Radio**. Do not add the generic media-player card for `media_player.di_fm_radio` if you want the station grid; that card has no favourite picker. The logical player also exposes **Browse media** so you can pick a favourite from more-info.
 
 Mockup: [docs/screenshots/card-mockup.svg](docs/screenshots/card-mockup.svg)
 

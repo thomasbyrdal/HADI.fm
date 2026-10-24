@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-10-24
+
+- Label every item on the integration Configure menu, including English (GB)
+- Open favourite-station editing directly from that menu
+- Add a station dropdown on the Lovelace card and recover favourites if the card was pointed at a speaker
+- Let the logical media player browse favourite stations from the standard media browser
+
 ## 0.1.0 — 2026-10-24
 
 Initial public package.

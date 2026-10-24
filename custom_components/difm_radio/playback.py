@@ -156,6 +156,20 @@ def playback_attributes(
     }
 
 
+def favourite_browse_items(favourite_views: list[FavouriteView]) -> list[dict[str, Any]]:
+    """Station rows for Home Assistant browse_media. No stream URLs."""
+
+    return [
+        {
+            "title": view.name,
+            "media_content_id": view.id,
+            "can_play": view.available,
+            "thumbnail": view.artwork_url,
+        }
+        for view in favourite_views
+    ]
+
+
 class RadioController:
     """Own at most one speaker session and keep logical state accurate."""
 

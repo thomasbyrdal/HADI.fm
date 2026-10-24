@@ -49,20 +49,36 @@ export function normalizeConfig(config: CardConfig | null | undefined): Normaliz
   };
 }
 
+export function isRadioEntity(
+  hass: HomeAssistant | null | undefined,
+  entityId: string,
+): boolean {
+  if (!entityId.startsWith("media_player.")) {
+    return false;
+  }
+  const attrs = hass?.states[entityId]?.attributes ?? {};
+  return attrs.integration === DOMAIN || Array.isArray(attrs.favourites);
+}
+
 export function findRadioEntity(hass: HomeAssistant | null | undefined): string | null {
   if (!hass?.states) {
     return null;
   }
   const matches = Object.keys(hass.states)
-    .filter((entityId) => {
-      if (!entityId.startsWith("media_player.")) {
-        return false;
-      }
-      const attrs = hass.states[entityId]?.attributes ?? {};
-      return attrs.integration === DOMAIN || Array.isArray(attrs.favourites);
-    })
+    .filter((entityId) => isRadioEntity(hass, entityId))
     .sort();
   return matches[0] ?? null;
+}
+
+export function resolveRadioEntity(
+  hass: HomeAssistant | null | undefined,
+  config: NormalizedConfig,
+): string {
+  const configured = config.entity;
+  if (configured && hass?.states[configured] && isRadioEntity(hass, configured)) {
+    return configured;
+  }
+  return findRadioEntity(hass) || configured || "";
 }
 
 export function networkLabel(network: string | null | undefined): string | null {
@@ -144,7 +160,7 @@ export function resolveVolume(
 }
 
 export function deriveView(hass: HomeAssistant | null | undefined, config: NormalizedConfig): CardView {
-  const entityId = config.entity || findRadioEntity(hass) || "";
+  const entityId = resolveRadioEntity(hass, config);
   const entity = entityId && hass?.states[entityId] ? hass.states[entityId] : null;
   if (!entity) {
     return emptyView(entityId, !entityId);

@@ -72,7 +72,14 @@
   "options": {
     "step": {
       "init": {
-        "title": "DI.FM Radio options"
+        "title": "DI.FM Radio options",
+        "description": "Change the speaker, favourite stations, or artwork.",
+        "menu_options": {
+          "player": "Default speaker and quality",
+          "favourites": "Favourite stations",
+          "favourites_filter": "Filter services before editing favourites",
+          "artwork": "Station artwork"
+        }
       },
       "player": {
         "title": "Default speaker",

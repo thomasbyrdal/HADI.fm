@@ -93,6 +93,7 @@ export class DifmRadioCard extends HTMLElement {
         </div>
         ${error ? `<div class="error" role="alert">${escapeHtml(error)}</div>` : ""}
         ${this._gridHtml(view)}
+        ${this._pickerHtml(view)}
         <div class="now">
           <div class="now-text">
             <div class="now-name">${escapeHtml(view.stationName || "No station playing")}</div>
@@ -121,7 +122,7 @@ export class DifmRadioCard extends HTMLElement {
       return `<div class="empty">DI.FM Radio is unavailable.</div>`;
     }
     if (!view.favourites.length) {
-      return `<div class="empty">Add favourite stations in the DI.FM Radio integration options.</div>`;
+      return `<div class="empty">Add favourite stations under Settings → Devices &amp; services → DI.FM Radio → Configure → Favourite stations.</div>`;
     }
     const gridClass = this._config.columns > 0 ? "grid fixed" : "grid";
     const columns = this._config.columns > 0 ? `--columns:${this._config.columns};` : "";
@@ -147,6 +148,26 @@ export class DifmRadioCard extends HTMLElement {
     </button>`;
   }
 
+  private _pickerHtml(view: CardView): string {
+    if (view.missingEntity || !view.available || !view.favourites.length) {
+      return "";
+    }
+    return `<div class="picker">
+      <label for="station">Listen to</label>
+      <select id="station" class="station-select" aria-label="Choose a station" ${this._pendingStation ? "disabled" : ""}>
+        <option value="">Choose a station</option>
+        ${view.favourites
+          .map((tile) => {
+            const selected = view.stationId === tile.id ? "selected" : "";
+            const disabled = tile.available ? "" : "disabled";
+            const label = tile.available ? tile.name : `${tile.name} (unavailable)`;
+            return `<option value="${escapeAttr(tile.id)}" ${selected} ${disabled}>${escapeHtml(label)}</option>`;
+          })
+          .join("")}
+      </select>
+    </div>`;
+  }
+
   private _volumeHtml(view: CardView): string {
     if (!this._config.show_volume) {
       return "";
@@ -170,6 +191,12 @@ export class DifmRadioCard extends HTMLElement {
           void this._play(stationId);
         }
       });
+    });
+    this.shadowRoot?.querySelector<HTMLSelectElement>(".station-select")?.addEventListener("change", (event) => {
+      const stationId = (event.target as HTMLSelectElement).value;
+      if (stationId) {
+        void this._play(stationId);
+      }
     });
     this.shadowRoot?.querySelector(".play")?.addEventListener("click", () => {
       if (this._view.stationId) {
