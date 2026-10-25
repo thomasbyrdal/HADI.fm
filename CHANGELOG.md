@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7 — 2026-10-25
+
+- Ignore speaker metadata ticks so long playback no longer floods Home Assistant state
+- Keep the card available across brief speaker dropouts instead of latching unavailable
+- Re-attach the card to a stream that kept playing across a Home Assistant restart
+
 ## 0.1.6 — 2026-10-25
 
 - Add a custom Settings icon: a radio with an antenna connected to the internet
