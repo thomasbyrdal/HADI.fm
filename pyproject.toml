@@ -1,9 +1,14 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "difm-radio"
 version = "0.1.7"
 description = "Home Assistant custom integration for DI.FM and sister radio services"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 authors = [{ name = "HADI.fm contributors" }]
 
@@ -14,6 +19,12 @@ test = [
     "pytest-asyncio>=0.24",
     "ruff>=0.6",
 ]
+
+# This repo is a Home Assistant custom integration, not a PyPI package.
+# Disable auto-discovery so setuptools does not try to ship brand/, frontend/,
+# or custom_components/ when CI runs ``pip install -e ".[test]"``.
+[tool.setuptools]
+packages = []
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
