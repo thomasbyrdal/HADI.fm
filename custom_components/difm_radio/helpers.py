@@ -270,6 +270,116 @@ def validate_media_player_entity(exists: bool, domain: str | None) -> str | None
     return None
 
 
+_AUDIOADDICT_HOST_NETWORKS: tuple[tuple[str, str], ...] = (
+    ("classicalradio.com", "classicalradio"),
+    ("radiotunes.com", "radiotunes"),
+    ("jazzradio.com", "jazzradio"),
+    ("rockradio.com", "rockradio"),
+    ("zenradio.com", "zenradio"),
+    ("di.fm", "di"),
+    ("audioaddict.com", ""),
+)
+_QUALITY_MOUNT_SUFFIXES = ("_aacp", "_aac", "_hi")
+_NETWORK_MOUNT_PREFIXES = {
+    "zenradio": ("zr",),
+    "radiotunes": ("rt",),
+    "rockradio": ("rr",),
+    "classicalradio": ("cr",),
+}
+
+
+def _stream_host(netloc: str) -> str:
+    return netloc.split("@")[-1].split(":")[0].lower()
+
+
+def is_audioaddict_stream_host(netloc: str) -> bool:
+    """Return whether a URL host belongs to an AudioAddict listen/Icecast server."""
+
+    host = _stream_host(netloc)
+    return any(
+        host == domain or host.endswith(f".{domain}") for domain, _ in _AUDIOADDICT_HOST_NETWORKS
+    )
+
+
+def network_from_stream_host(netloc: str) -> str | None:
+    """Map an Icecast host to a catalogue network key, if known."""
+
+    host = _stream_host(netloc)
+    for domain, network in _AUDIOADDICT_HOST_NETWORKS:
+        if host == domain or host.endswith(f".{domain}"):
+            return network or None
+    return None
+
+
+def stream_carries_listen_key(url: str, listen_key: str | None) -> bool:
+    """Return whether *url* includes the configured listen key."""
+
+    if not url or not listen_key:
+        return False
+    parts = urlsplit(url)
+    if parts.query == listen_key:
+        return True
+    values = (value for _key, value in parse_qsl(parts.query, keep_blank_values=True))
+    return any(value == listen_key for value in values)
+
+
+def stream_looks_ours(url: str, listen_key: str | None) -> bool:
+    """Return whether a speaker media_content_id is a DI.FM / sister-service stream."""
+
+    if not url or "://" not in url:
+        return False
+    if stream_carries_listen_key(url, listen_key):
+        return True
+    return is_audioaddict_stream_host(urlsplit(url).netloc)
+
+
+def _mount_name(path: str) -> str:
+    return path.strip("/").split("/")[-1]
+
+
+def _strip_quality_suffix(mount: str) -> str:
+    for suffix in _QUALITY_MOUNT_SUFFIXES:
+        if mount.endswith(suffix):
+            return mount[: -len(suffix)]
+    return mount
+
+
+def _station_matches_mount(station: Station, mount: str, network: str | None) -> bool:
+    if network and station.network != network:
+        return False
+    if station.key == mount:
+        return True
+    prefixes = _NETWORK_MOUNT_PREFIXES.get(station.network, ())
+    return any(mount == f"{prefix}{station.key}" for prefix in prefixes)
+
+
+def match_station_from_stream(
+    catalogue: Catalogue,
+    url: str,
+    *,
+    hint_station_id: str | None = None,
+) -> Station | None:
+    """Resolve a playing Icecast URL back to a catalogue station."""
+
+    parts = urlsplit(url)
+    mount = _strip_quality_suffix(_mount_name(parts.path))
+    network = network_from_stream_host(parts.netloc)
+    hinted_id = str(hint_station_id).strip() if hint_station_id else ""
+    hinted = catalogue.stations.get(hinted_id) if hinted_id else None
+    if hinted is not None and _station_matches_mount(hinted, mount, network):
+        return hinted
+    matches = [
+        station
+        for station in catalogue.stations.values()
+        if _station_matches_mount(station, mount, network)
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if hinted is not None and network is not None and hinted.network == network:
+        return hinted
+    return None
+
+
 def attach_icecast_key(url: str, listen_key: str) -> str:
     """Attach a listen key in the form verified against Icecast.
 

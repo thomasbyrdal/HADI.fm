@@ -50,6 +50,7 @@ ATTR_CHANNEL_KEY: Final = "channel_key"
 ATTR_AVAILABLE: Final = "available"
 ATTR_MEDIA_PLAYER: Final = "media_player"
 ATTR_FAVOURITE: Final = "favourite"
+ATTR_FAVOURITES: Final = "favourites"
 
 SERVICE_PLAY_STATION: Final = "play_station"
 SERVICE_STOP: Final = "stop"

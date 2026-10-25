@@ -20,11 +20,11 @@ from custom_components.difm_radio.playback import (
     STATE_IDLE,
     STATE_PLAYING,
     STATE_STOPPED,
-    STATE_UNAVAILABLE,
     RadioController,
     SpeakerSnapshot,
     favourite_browse_items,
     playback_attributes,
+    speaker_event_affects_session,
 )
 
 LISTEN_KEY = "test-listen-key"
@@ -366,21 +366,98 @@ async def test_sync_loses_ownership_when_speaker_goes_idle() -> None:
     assert speaker.stop_calls == []
 
 
-async def test_sync_marks_unavailable_and_foreign_media() -> None:
+async def test_sync_ignores_unavailable_blip_and_releases_foreign_media() -> None:
     controller, _client, speaker = _controller()
+    notes: list[int] = []
+    controller.add_listener(lambda: notes.append(1))
     await controller.async_play_station(
         _catalogue(), "1", quality="premium_high", default_speaker=SPEAKER
     )
+    notes.clear()
     speaker.entities[SPEAKER].state = "unavailable"
     await controller.async_sync_from_speaker()
     assert controller.state.owned is True
-    assert controller.state.logical_state == STATE_UNAVAILABLE
+    assert controller.state.logical_state == STATE_PLAYING
+    assert notes == []
 
     speaker.entities[SPEAKER].state = "playing"
+    await controller.async_sync_from_speaker()
+    assert controller.state.owned is True
+    assert controller.state.logical_state == STATE_PLAYING
+    assert notes == []
+
     speaker.entities[SPEAKER].media_content_id = "http://other.example/track"
     await controller.async_sync_from_speaker()
     assert controller.state.owned is False
     assert controller.state.logical_state == STATE_IDLE
+    assert notes == [1]
+
+
+async def test_sync_does_not_notify_when_still_playing() -> None:
+    controller, _client, speaker = _controller()
+    notes: list[int] = []
+    controller.add_listener(lambda: notes.append(1))
+    await controller.async_play_station(
+        _catalogue(), "1", quality="premium_high", default_speaker=SPEAKER
+    )
+    notes.clear()
+    speaker.entities[SPEAKER].state = "playing"
+    await controller.async_sync_from_speaker()
+    assert controller.state.logical_state == STATE_PLAYING
+    assert notes == []
+
+
+async def test_sync_releases_when_speaker_returns_idle_after_blip() -> None:
+    controller, _client, speaker = _controller()
+    await controller.async_play_station(
+        _catalogue(), "1", quality="premium_high", default_speaker=SPEAKER
+    )
+    speaker.entities[SPEAKER].state = "unknown"
+    await controller.async_sync_from_speaker()
+    assert controller.state.owned is True
+    assert controller.state.logical_state == STATE_PLAYING
+    speaker.entities[SPEAKER].state = "idle"
+    await controller.async_sync_from_speaker()
+    assert controller.state.owned is False
+    assert controller.state.logical_state == STATE_IDLE
+
+
+def test_speaker_event_ignores_metadata_and_blips() -> None:
+    playing_attrs = {
+        "media_content_id": MIRRORS[0],
+        "volume_level": 0.4,
+        "supported_features": 1,
+        "media_title": "Track A",
+        "media_position": 12,
+        "media_position_updated_at": "2026-10-25T18:00:00+00:00",
+    }
+    title_tick = {
+        **playing_attrs,
+        "media_title": "Track B",
+        "media_position": 13,
+        "media_position_updated_at": "2026-10-25T18:00:01+00:00",
+    }
+    assert (
+        speaker_event_affects_session("playing", "playing", playing_attrs, title_tick)
+        is False
+    )
+    assert speaker_event_affects_session("playing", "unavailable", playing_attrs, {}) is False
+    assert speaker_event_affects_session("playing", "unknown", playing_attrs, {}) is False
+    assert speaker_event_affects_session("playing", None, playing_attrs, None) is False
+    assert speaker_event_affects_session("unavailable", "playing", {}, playing_attrs) is True
+    assert speaker_event_affects_session("playing", "idle", playing_attrs, playing_attrs) is True
+    noisy_volume = {**playing_attrs, "volume_level": 0.4004}
+    assert (
+        speaker_event_affects_session("playing", "playing", playing_attrs, noisy_volume)
+        is False
+    )
+    real_volume = {**playing_attrs, "volume_level": 0.55}
+    assert (
+        speaker_event_affects_session("playing", "playing", playing_attrs, real_volume)
+        is True
+    )
+    foreign = {**playing_attrs, "media_content_id": "http://other.example/track"}
+    assert speaker_event_affects_session("playing", "playing", playing_attrs, foreign) is True
 
 
 async def test_speaker_override_and_invalid_quality() -> None:
@@ -406,6 +483,69 @@ async def test_speaker_override_and_invalid_quality() -> None:
             None, "1", quality="premium_high", default_speaker=SPEAKER
         )
     assert missing.value.code == "cannot_connect"
+
+
+async def test_adopt_playing_speaker_after_restart() -> None:
+    speaker = FakeSpeaker()
+    speaker.add_player(state="playing")
+    speaker.entities[SPEAKER].media_content_id = MIRRORS[0]
+    controller, _client, _speaker = _controller(speaker=speaker)
+    notes: list[int] = []
+    controller.add_listener(lambda: notes.append(1))
+    state = await controller.async_adopt_playing_speaker(
+        _catalogue(),
+        [SPEAKER],
+        listen_key=LISTEN_KEY,
+        hint_station_id="1",
+    )
+    assert state.owned is True
+    assert state.confirmed is True
+    assert state.logical_state == STATE_PLAYING
+    assert state.station is not None
+    assert state.station.id == "1"
+    assert state.speaker_entity_id == SPEAKER
+    assert state.stream_url == MIRRORS[0]
+    assert notes == [1]
+    notes.clear()
+    again = await controller.async_adopt_playing_speaker(
+        _catalogue(), [SPEAKER], listen_key=LISTEN_KEY
+    )
+    assert again.owned is True
+    assert notes == []
+
+
+async def test_adopt_matches_stripped_query_and_skips_foreign() -> None:
+    speaker = FakeSpeaker()
+    speaker.add_player(state="playing")
+    speaker.entities[SPEAKER].media_content_id = "http://prem2.di.fm:80/trance_hi"
+    controller, _client, _speaker = _controller(speaker=speaker)
+    state = await controller.async_adopt_playing_speaker(
+        _catalogue(), [SPEAKER], listen_key=LISTEN_KEY
+    )
+    assert state.logical_state == STATE_PLAYING
+    assert state.owned is True
+
+    speaker.entities[SPEAKER].media_content_id = "http://other.example/track"
+    controller, _client, _speaker = _controller(speaker=speaker)
+    skipped = await controller.async_adopt_playing_speaker(
+        _catalogue(), [SPEAKER], listen_key=LISTEN_KEY, hint_station_id="1"
+    )
+    assert skipped.owned is False
+    assert skipped.logical_state == STATE_IDLE
+
+
+async def test_adopt_ignores_idle_and_missing_catalogue() -> None:
+    controller, _client, speaker = _controller()
+    speaker.entities[SPEAKER].state = "idle"
+    speaker.entities[SPEAKER].media_content_id = MIRRORS[0]
+    idle = await controller.async_adopt_playing_speaker(
+        _catalogue(), [SPEAKER], listen_key=LISTEN_KEY
+    )
+    assert idle.owned is False
+    missing = await controller.async_adopt_playing_speaker(
+        None, [SPEAKER], listen_key=LISTEN_KEY
+    )
+    assert missing.owned is False
 
 
 async def test_owns_media_matches_host_when_query_stripped() -> None:

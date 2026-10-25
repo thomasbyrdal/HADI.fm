@@ -10,10 +10,14 @@ from custom_components.difm_radio.helpers import (
     attach_icecast_key,
     build_station_options,
     favourite_views,
+    is_audioaddict_stream_host,
+    match_station_from_stream,
     merge_favourites,
     parse_favourites,
     redact_mapping,
     redact_url,
+    stream_carries_listen_key,
+    stream_looks_ours,
     validate_media_player_entity,
 )
 from custom_components.difm_radio.models import Catalogue, Favourite, Station
@@ -159,3 +163,41 @@ async def test_client_exceptions_do_not_include_listen_key() -> None:
     with pytest.raises(InvalidListenKeyError) as err:
         await client.async_validate_listen_key("super-secret-key")
     assert "super-secret-key" not in str(err.value)
+
+
+def test_stream_identity_and_station_match() -> None:
+    key = "abc123listen"
+    di_url = f"http://prem2.di.fm:80/trance_hi?{key}"
+    jazz_url = "http://prem1.jazzradio.com:80/smoothjazz"
+    assert stream_carries_listen_key(di_url, key) is True
+    assert stream_carries_listen_key("http://prem2.di.fm:80/trance_hi", key) is False
+    assert stream_looks_ours(di_url, key) is True
+    assert stream_looks_ours(jazz_url, key) is True
+    assert stream_looks_ours("http://other.example/track", key) is False
+    assert is_audioaddict_stream_host("prem2.di.fm:80") is True
+    assert is_audioaddict_stream_host("speaker.local") is False
+
+    catalogue = Catalogue(
+        stations={
+            "1": _station("1", "di", "trance", "Trance"),
+            "73": _station("73", "jazzradio", "smoothjazz", "Smooth Jazz"),
+            "9": _station("9", "zenradio", "meditation", "Meditation"),
+        }
+    )
+    assert match_station_from_stream(catalogue, di_url).id == "1"
+    assert match_station_from_stream(catalogue, jazz_url).id == "73"
+    assert match_station_from_stream(
+        catalogue, "http://prem2.zenradio.com:80/zrmeditation"
+    ).id == "9"
+    assert (
+        match_station_from_stream(
+            catalogue,
+            "http://prem2.di.fm:80/unknown_hi",
+            hint_station_id="1",
+        ).id
+        == "1"
+    )
+    assert (
+        match_station_from_stream(catalogue, "http://other.example/track", hint_station_id="1")
+        is None
+    )

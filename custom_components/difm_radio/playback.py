@@ -10,7 +10,7 @@ stream allowed by the Terms of Use. The physical speaker is the only client.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -18,6 +18,7 @@ from urllib.parse import urlsplit
 from .const import (
     ATTR_AVAILABLE,
     ATTR_CHANNEL_KEY,
+    ATTR_FAVOURITES,
     ATTR_NETWORK,
     ATTR_STATION_ID,
     PLAYBACK_CONFIRM_TIMEOUT,
@@ -33,7 +34,12 @@ from .exceptions import (
     StationUnavailableError,
     UnknownStationError,
 )
-from .helpers import redact_url, validate_media_player_entity
+from .helpers import (
+    match_station_from_stream,
+    redact_url,
+    stream_looks_ours,
+    validate_media_player_entity,
+)
 from .models import Catalogue, FavouriteView, Station
 
 STATE_IDLE = "idle"
@@ -44,7 +50,10 @@ STATE_BUFFERING = "buffering"
 
 CONFIRM_STATES = frozenset({STATE_PLAYING, STATE_BUFFERING})
 LOST_STATES = frozenset({"idle", "off", "standby", "paused"})
-UNAVAILABLE_STATES = frozenset({"unavailable", "unknown"})
+UNAVAILABLE_STATES = frozenset({STATE_UNAVAILABLE, "unknown"})
+SPEAKER_SESSION_ATTRS = frozenset(
+    {"media_content_id", "volume_level", "supported_features"}
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -141,7 +150,7 @@ def playback_attributes(
         "last_error": state.last_error_code,
         "speaker_entity_id": state.speaker_entity_id,
         "owned": state.owned,
-        "favourites": [
+        ATTR_FAVOURITES: [
             {
                 "id": view.id,
                 "name": view.name,
@@ -154,6 +163,46 @@ def playback_attributes(
             for view in favourite_views
         ],
     }
+
+
+def rounded_volume(value: Any) -> float | None:
+    """Round a speaker volume so position-tick float noise is ignored."""
+
+    if value is None:
+        return None
+    try:
+        return round(float(value), 3)
+    except (TypeError, ValueError):
+        return None
+
+
+def speaker_event_affects_session(
+    old_state: str | None,
+    new_state: str | None,
+    old_attributes: Mapping[str, Any] | None,
+    new_attributes: Mapping[str, Any] | None,
+) -> bool:
+    """Return whether a speaker state-changed event can affect our session.
+
+    Track-title and media_position updates are ignored. A speaker that
+    disappears or becomes unavailable/unknown is treated as a blip: keep the
+    current session until a real state (playing, idle, off, ...) returns.
+    """
+
+    if new_state is None or new_state in UNAVAILABLE_STATES:
+        return False
+    if old_state != new_state:
+        return True
+    old_attrs = old_attributes or {}
+    new_attrs = new_attributes or {}
+    for key in SPEAKER_SESSION_ATTRS:
+        if key == "volume_level":
+            if rounded_volume(old_attrs.get(key)) != rounded_volume(new_attrs.get(key)):
+                return True
+            continue
+        if old_attrs.get(key) != new_attrs.get(key):
+            return True
+    return False
 
 
 def favourite_browse_items(favourite_views: list[FavouriteView]) -> list[dict[str, Any]]:
@@ -302,32 +351,93 @@ class RadioController:
             return
         await self._speakers.async_set_volume(speaker_id, max(0.0, min(1.0, float(volume))))
 
+    def _session_key(self) -> tuple[Any, ...]:
+        station = self.state.station
+        return (
+            self.state.logical_state,
+            self.state.owned,
+            self.state.confirmed,
+            self.state.speaker_entity_id,
+            station.id if station else None,
+            self.state.last_error_code,
+        )
+
     async def async_sync_from_speaker(self) -> PlaybackState:
-        """Mirror the physical speaker without taking or releasing a session blindly."""
+        """Mirror the physical speaker without taking or releasing a session blindly.
+
+        A speaker that is missing or ``unavailable``/``unknown`` is a blip: keep
+        the current session so the logical player stays available and playback
+        can resume when the speaker returns. Notify listeners only when
+        ownership or logical state actually changes.
+        """
 
         speaker_id = self.state.speaker_entity_id
         if not speaker_id:
             return self.state
         snapshot = await self._speakers.async_get(speaker_id)
         if not snapshot.exists or snapshot.state in UNAVAILABLE_STATES:
-            if self.state.owned:
-                self.state.logical_state = STATE_UNAVAILABLE
-                self._notify()
             return self.state
         if not self.state.owned:
             return self.state
+        before = self._session_key()
         if snapshot.media_content_id and not self.owns_media(snapshot.media_content_id):
             self._release_session(STATE_IDLE)
-            self._notify()
-            return self.state
-        if snapshot.state in CONFIRM_STATES:
+        elif snapshot.state in CONFIRM_STATES:
             self.state.confirmed = True
             self.state.logical_state = (
                 STATE_PLAYING if snapshot.state == STATE_PLAYING else STATE_BUFFERING
             )
         elif snapshot.state in LOST_STATES:
             self._release_session(STATE_IDLE)
-        self._notify()
+        if self._session_key() != before:
+            self._notify()
+        return self.state
+
+    async def async_adopt_playing_speaker(
+        self,
+        catalogue: Catalogue | None,
+        speaker_entity_ids: list[str],
+        *,
+        listen_key: str | None,
+        hint_station_id: str | None = None,
+    ) -> PlaybackState:
+        """Re-attach a session if a speaker is still playing our stream.
+
+        Used after a Home Assistant restart. The physical speaker keeps the
+        Icecast connection; this process only restores logical state.
+        """
+
+        if self.state.owned or catalogue is None:
+            return self.state
+        seen: set[str] = set()
+        for raw_id in speaker_entity_ids:
+            speaker_id = str(raw_id or "").strip()
+            if not speaker_id or speaker_id in seen:
+                continue
+            seen.add(speaker_id)
+            snapshot = await self._speakers.async_get(speaker_id)
+            if not snapshot.exists or snapshot.state not in CONFIRM_STATES:
+                continue
+            url = snapshot.media_content_id
+            if not url or not stream_looks_ours(url, listen_key):
+                continue
+            station = match_station_from_stream(
+                catalogue, url, hint_station_id=hint_station_id
+            )
+            if station is None:
+                continue
+            self.state.station = station
+            self.state.speaker_entity_id = speaker_id
+            self.state.stream_url = url
+            self.state.owned = True
+            self.state.confirmed = True
+            self.state.logical_state = (
+                STATE_PLAYING if snapshot.state == STATE_PLAYING else STATE_BUFFERING
+            )
+            self.state.last_error = None
+            self.state.last_error_code = None
+            self._notify()
+            return self.state
         return self.state
 
     async def async_speaker_snapshot(self, entity_id: str) -> SpeakerSnapshot:

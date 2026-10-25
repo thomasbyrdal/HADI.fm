@@ -20,9 +20,13 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
+    ATTR_FAVOURITES,
+    ATTR_STATION_ID,
     CONF_DEFAULT_MEDIA_PLAYER,
+    CONF_LISTEN_KEY,
     CONF_STREAM_QUALITY,
     DEFAULT_STREAM_QUALITY,
     DOMAIN,
@@ -31,12 +35,13 @@ from .exceptions import PlaybackError
 from .playback import (
     STATE_BUFFERING,
     STATE_PLAYING,
-    STATE_UNAVAILABLE,
     DifmRadioRuntime,
     RadioController,
     SpeakerSnapshot,
     favourite_browse_items,
     playback_attributes,
+    rounded_volume,
+    speaker_event_affects_session,
 )
 
 _STATE_MAP = {
@@ -119,7 +124,7 @@ class HomeAssistantSpeakerPort:
         await asyncio.sleep(seconds)
 
 
-class DifmRadioMediaPlayer(MediaPlayerEntity):
+class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
     """Logical player that forwards playback to the configured speaker."""
 
     _attr_has_entity_name = True
@@ -127,6 +132,9 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
     _attr_media_content_type = MediaType.MUSIC
     _attr_should_poll = False
     _attr_translation_key = "radio"
+    _unrecorded_attributes = frozenset(
+        getattr(MediaPlayerEntity, "_unrecorded_attributes", frozenset())
+    ) | frozenset({ATTR_FAVOURITES})
 
     def __init__(self, entry: ConfigEntry, runtime: DifmRadioRuntime) -> None:
         self._entry = entry
@@ -134,6 +142,8 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
         self._unsub_speaker = None
         self._speaker_volume: float | None = None
         self._speaker_supports_volume = False
+        self._cached_attributes: dict[str, Any] | None = None
+        self._cached_attributes_key: tuple[Any, ...] | None = None
         self._attr_unique_id = entry.entry_id
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, entry.entry_id)},
@@ -148,7 +158,9 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
 
     @property
     def available(self) -> bool:
-        return self.controller.state.logical_state != STATE_UNAVAILABLE
+        """Stay available so a speaker blip does not hide the Lovelace card."""
+
+        return True
 
     @property
     def state(self) -> MediaPlayerState:
@@ -199,18 +211,59 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
             features |= MediaPlayerEntityFeature.VOLUME_SET
         return features
 
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        return playback_attributes(
-            self.controller.state, self._runtime.coordinator.favourite_views
+    def _attributes_cache_key(self) -> tuple[Any, ...]:
+        state = self.controller.state
+        station = state.station
+        coordinator = self._runtime.coordinator
+        return (
+            state.logical_state,
+            state.owned,
+            state.last_error_code,
+            state.speaker_entity_id,
+            station.id if station else None,
+            id(coordinator.data),
+            tuple((fav.id, fav.network, fav.key) for fav in coordinator.favourites),
         )
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        key = self._attributes_cache_key()
+        if self._cached_attributes is None or self._cached_attributes_key != key:
+            self._cached_attributes = playback_attributes(
+                self.controller.state, self._runtime.coordinator.favourite_views
+            )
+            self._cached_attributes_key = key
+        return self._cached_attributes
+
     async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
         self.async_on_remove(self.controller.add_listener(self._handle_controller))
         self.async_on_remove(self._runtime.coordinator.async_add_listener(self._handle_controller))
         self.async_on_remove(self._unwatch_speaker)
+        await self._async_restore_speaker_session()
         self.async_watch_speaker()
         await self._async_refresh_speaker_capabilities()
+
+    async def _async_restore_speaker_session(self) -> None:
+        """Adopt a speaker that kept playing across a Home Assistant restart."""
+
+        last = await self.async_get_last_state()
+        last_attrs = last.attributes if last is not None else {}
+        hint = last_attrs.get(ATTR_STATION_ID)
+        candidates: list[str] = []
+        previous_speaker = last_attrs.get("speaker_entity_id")
+        if isinstance(previous_speaker, str) and previous_speaker.startswith("media_player."):
+            candidates.append(previous_speaker)
+        default_speaker = self._default_speaker()
+        if default_speaker:
+            candidates.append(default_speaker)
+        listen_key = str(self._entry.data.get(CONF_LISTEN_KEY, "")).strip() or None
+        await self.controller.async_adopt_playing_speaker(
+            self._runtime.coordinator.data,
+            candidates,
+            listen_key=listen_key,
+            hint_station_id=str(hint) if hint is not None else None,
+        )
 
     @callback
     def _handle_controller(self) -> None:
@@ -245,10 +298,22 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
     def _quality(self) -> str:
         return str(self._entry.options.get(CONF_STREAM_QUALITY, DEFAULT_STREAM_QUALITY))
 
-    async def _async_speaker_event(self, _event: Any) -> None:
+    async def _async_speaker_event(self, event: Any) -> None:
+        data = getattr(event, "data", None) or {}
+        old_state = data.get("old_state")
+        new_state = data.get("new_state")
+        if not speaker_event_affects_session(
+            getattr(old_state, "state", None),
+            getattr(new_state, "state", None),
+            getattr(old_state, "attributes", None),
+            getattr(new_state, "attributes", None),
+        ):
+            return
+        volume_before = (self._speaker_volume, self._speaker_supports_volume)
         await self.controller.async_sync_from_speaker()
         await self._async_refresh_speaker_capabilities()
-        self.async_write_ha_state()
+        if (self._speaker_volume, self._speaker_supports_volume) != volume_before:
+            self.async_write_ha_state()
 
     async def _async_refresh_speaker_capabilities(self) -> None:
         entity_id = self.controller.state.speaker_entity_id or self._default_speaker()
@@ -257,7 +322,7 @@ class DifmRadioMediaPlayer(MediaPlayerEntity):
             self._speaker_supports_volume = False
             return
         snapshot = await self.controller.async_speaker_snapshot(entity_id)
-        self._speaker_volume = snapshot.volume_level
+        self._speaker_volume = rounded_volume(snapshot.volume_level)
         self._speaker_supports_volume = snapshot.supports_volume
 
     async def async_browse_media(
