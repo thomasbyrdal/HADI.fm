@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.9 — 2026-10-26
+
+- Fix `Custom element doesn't exist: difm-radio-card` after restart by waiting for Lovelace before registering the card resource
+- Avoid the `add_extra_js_url` startup race that blanked the dashboard card
+
 ## 0.1.8 — 2026-10-26
 
 - Harden the Lovelace card so render failures never become a blank Configuration error

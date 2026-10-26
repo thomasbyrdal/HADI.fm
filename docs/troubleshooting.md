@@ -35,6 +35,14 @@ Home Assistant needs `options.step.init.menu_options` translations. Update to 0.
 
 HACS does not treat a new `main` commit as an update if the integration was first installed before any GitHub release existed. Use **⋮ → Redownload** and pick the release version.
 
+## Custom element doesn't exist: difm-radio-card
+
+1. Update to **0.1.9** or later, then restart Home Assistant.
+2. Open **Settings → Dashboards → Resources** and confirm a **module** resource for `/difm_radio/difm-radio-card.js?v=0.1.9` (or newer).
+3. If it is missing, add that URL yourself as type **module**, then hard-refresh the browser.
+4. In logs, search for `Serving DI.FM Radio card` and `Registered Lovelace card resource`.
+5. In the browser console after a hard refresh you should see `DI.FM Radio card v0.1.9`.
+
 ## Card shows Configuration error after hours of playback
 
 1. Open the browser console on the dashboard **before** reloading.

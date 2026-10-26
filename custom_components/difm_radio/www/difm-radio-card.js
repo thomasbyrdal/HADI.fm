@@ -1286,6 +1286,7 @@ function escapeAttr2(value) {
 }
 
 // src/register.ts
+var CARD_VERSION = "0.1.9";
 if (!customElements.get("difm-radio-card")) {
   customElements.define("difm-radio-card", DifmRadioCard);
 }
@@ -1304,3 +1305,8 @@ if (!win.customCards.some((card) => card.type === "difm-radio-card")) {
     getEntitySuggestion: entitySuggestion
   });
 }
+console.info(
+  `%c DI.FM Radio card %c v${CARD_VERSION} `,
+  "background:#03a9f4;color:#fff;padding:2px 4px;border-radius:4px 0 0 4px",
+  "background:#333;color:#fff;padding:2px 4px;border-radius:0 4px 4px 0"
+);

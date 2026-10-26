@@ -62,6 +62,6 @@ PLAYBACK_POLL_INTERVAL: Final = 0.25
 
 FRONTEND_URL_BASE: Final = "/difm_radio"
 CARD_FILENAME: Final = "difm-radio-card.js"
-INTEGRATION_VERSION: Final = "0.1.8"
+INTEGRATION_VERSION: Final = "0.1.9"
 
 TO_REDACT: Final = {CONF_LISTEN_KEY, "listen_key"}

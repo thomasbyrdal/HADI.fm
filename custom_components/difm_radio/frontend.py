@@ -3,6 +3,11 @@
 HACS dashboard plugins live in ``/config/www/community/``. This card is part
 of the integration, so it is served from ``custom_components/difm_radio/www``
 at ``/difm_radio/difm-radio-card.js``.
+
+Important: do **not** fall back to ``add_extra_js_url`` while Lovelace is still
+starting. That races the dashboard render and surfaces as
+``Custom element doesn't exist: difm-radio-card`` after every restart.
+Storage-mode installs must register a Lovelace Dashboard resource instead.
 """
 
 from __future__ import annotations
@@ -18,7 +23,7 @@ _LOGGER = logging.getLogger(__name__)
 
 _PATH_FLAG = f"{DOMAIN}_frontend_path"
 _MODULE_FLAG = f"{DOMAIN}_frontend_module"
-_MAX_RESOURCE_WAITS = 12
+_MAX_RESOURCE_WAITS = 24
 
 
 def card_resource_path() -> str:
@@ -55,6 +60,10 @@ async def async_register_frontend(hass) -> None:
     """Serve the card and register it with Lovelace. Safe to call more than once."""
 
     await _async_register_static_path(hass)
+    if not hass.data.get(_PATH_FLAG):
+        _LOGGER.warning(
+            "DI.FM Radio static path is not ready yet; will keep retrying card registration"
+        )
     await _async_register_card_module(hass)
 
 
@@ -64,6 +73,10 @@ async def _async_register_static_path(hass) -> None:
     path = www_path()
     if not path.is_dir():
         _LOGGER.warning("DI.FM Radio card directory is missing: %s", path)
+        return
+    card_file = path / CARD_FILENAME
+    if not card_file.is_file():
+        _LOGGER.warning("DI.FM Radio card bundle is missing: %s", card_file)
         return
     try:
         from homeassistant.components.http import StaticPathConfig
@@ -77,20 +90,63 @@ async def _async_register_static_path(hass) -> None:
         _LOGGER.warning("Could not register DI.FM Radio static path: %s", err)
         return
     hass.data[_PATH_FLAG] = True
+    _LOGGER.info("Serving DI.FM Radio card from %s", FRONTEND_URL_BASE)
 
 
 async def _async_register_card_module(hass, attempt: int = 0) -> None:
     if hass.data.get(_MODULE_FLAG):
         return
+    if not hass.data.get(_PATH_FLAG):
+        await _async_register_static_path(hass)
+        if not hass.data.get(_PATH_FLAG):
+            if attempt >= _MAX_RESOURCE_WAITS:
+                _LOGGER.error(
+                    "DI.FM Radio card file is not being served. Expected %s",
+                    card_module_url(),
+                )
+                return
+            _schedule_retry(hass, attempt)
+            return
+
     lovelace = hass.data.get("lovelace")
-    mode = getattr(lovelace, "mode", None) if lovelace is not None else None
-    if lovelace is None or mode != "storage":
+    if lovelace is None:
+        # Lovelace has not started yet. Wait — do not use add_extra_js_url here.
+        if attempt >= _MAX_RESOURCE_WAITS:
+            _LOGGER.warning(
+                "Lovelace was not available; falling back to frontend extra JS for %s",
+                card_module_url(),
+            )
+            _register_extra_js_url(hass)
+            return
+        _LOGGER.debug(
+            "Waiting for Lovelace before registering card (attempt %s/%s)",
+            attempt + 1,
+            _MAX_RESOURCE_WAITS,
+        )
+        _schedule_retry(hass, attempt)
+        return
+
+    mode = getattr(lovelace, "mode", None)
+    if mode != "storage":
+        _LOGGER.info(
+            "Lovelace mode is %s; registering DI.FM Radio card via frontend extra JS",
+            mode,
+        )
         _register_extra_js_url(hass)
         return
+
     resources = getattr(lovelace, "resources", None)
     if resources is None:
-        _register_extra_js_url(hass)
+        if attempt >= _MAX_RESOURCE_WAITS:
+            _LOGGER.warning(
+                "Lovelace resources missing; falling back to frontend extra JS for %s",
+                card_module_url(),
+            )
+            _register_extra_js_url(hass)
+            return
+        _schedule_retry(hass, attempt)
         return
+
     if not getattr(resources, "loaded", False):
         await _async_load_resources(resources)
     if not getattr(resources, "loaded", False):
@@ -102,14 +158,9 @@ async def _async_register_card_module(hass, attempt: int = 0) -> None:
             )
             _register_extra_js_url(hass)
             return
-        from homeassistant.helpers.event import async_call_later
-
-        async_call_later(
-            hass,
-            5,
-            lambda _now: hass.async_create_task(_async_register_card_module(hass, attempt + 1)),
-        )
+        _schedule_retry(hass, attempt)
         return
+
     try:
         await _async_upsert_resource(resources)
     except Exception as err:  # noqa: BLE001
@@ -117,7 +168,17 @@ async def _async_register_card_module(hass, attempt: int = 0) -> None:
         _register_extra_js_url(hass)
         return
     hass.data[_MODULE_FLAG] = True
-    _LOGGER.info("Registered Lovelace card %s", card_module_url())
+    _LOGGER.info("Registered Lovelace card resource %s", card_module_url())
+
+
+def _schedule_retry(hass, attempt: int) -> None:
+    from homeassistant.helpers.event import async_call_later
+
+    async_call_later(
+        hass,
+        5,
+        lambda _now: hass.async_create_task(_async_register_card_module(hass, attempt + 1)),
+    )
 
 
 async def _async_load_resources(resources: Any) -> None:
@@ -143,8 +204,12 @@ async def _async_upsert_resource(resources: Any) -> None:
                 item["id"],
                 {"res_type": "module", "url": url},
             )
+            _LOGGER.info("Updated Lovelace card resource to %s", url)
+        else:
+            _LOGGER.debug("Lovelace card resource already current: %s", url)
         return
     await resources.async_create_item({"res_type": "module", "url": url})
+    _LOGGER.info("Created Lovelace card resource %s", url)
 
 
 def _register_extra_js_url(hass) -> None:
