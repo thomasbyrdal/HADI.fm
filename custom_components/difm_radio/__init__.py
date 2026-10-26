@@ -42,6 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
     from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+    from .activity import ActivityTracker
     from .coordinator import DifmRadioCoordinator
     from .exceptions import CannotConnectError, InvalidListenKeyError, InvalidResponseError
     from .media_player import HomeAssistantSpeakerPort
@@ -53,26 +54,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if not listen_key:
         raise ConfigEntryAuthFailed("Listen key is missing")
 
+    activity = ActivityTracker()
+    activity.note("setup_entry_start")
     client = AudioAddictClient(async_get_clientsession(hass), listen_key)
     try:
         await client.async_validate_listen_key(listen_key)
     except InvalidListenKeyError as err:
+        activity.warn_with_context("Listen key rejected during setup")
         raise ConfigEntryAuthFailed("Listen key rejected") from err
     except (CannotConnectError, InvalidResponseError) as err:
-        raise ConfigEntryNotReady(describe_request_error(err)) from err
+        detail = describe_request_error(err)
+        activity.warn_with_context("Listen key validation unreachable: %s", detail)
+        raise ConfigEntryNotReady(detail) from err
 
     from .frontend import async_register_frontend
 
     await async_register_frontend(hass)
-    coordinator = DifmRadioCoordinator(hass, entry, client)
+    coordinator = DifmRadioCoordinator(hass, entry, client, activity=activity)
     await coordinator.async_config_entry_first_refresh()
-    controller = RadioController(client, HomeAssistantSpeakerPort(hass))
-    entry.runtime_data = DifmRadioRuntime(coordinator=coordinator, controller=controller)
-    await hass.config_entries.async_forward_entry_setups(entry, [Platform.MEDIA_PLAYER])
+    controller = RadioController(
+        client, HomeAssistantSpeakerPort(hass), activity=activity
+    )
+    entry.runtime_data = DifmRadioRuntime(
+        coordinator=coordinator,
+        controller=controller,
+        activity=activity,
+    )
+    platforms = [Platform.MEDIA_PLAYER, Platform.SENSOR]
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
     await async_setup_services(hass)
     entry.async_on_unload(entry.add_update_listener(async_update_listener))
-    _LOGGER.debug(
-        "DI.FM Radio catalogue loaded with %s stations", len(coordinator.data.stations)
+    activity.note(
+        "setup_entry_ready",
+        f"{len(coordinator.data.stations)} stations",
     )
     return True
 
@@ -81,10 +95,14 @@ async def async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None
     """Apply options without tearing down an owned playback session."""
 
     runtime = entry.runtime_data
+    if runtime.activity is not None:
+        runtime.activity.note("options_listener")
     listen_key = str(entry.data.get(CONF_LISTEN_KEY, "")).strip()
     runtime.coordinator.client.set_listen_key(listen_key)
     if runtime.entity is not None:
         runtime.entity.async_on_options_update()
+    if runtime.favourites_entity is not None:
+        runtime.favourites_entity.async_on_options_update()
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -96,8 +114,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     runtime = getattr(entry, "runtime_data", None)
     if runtime is not None:
+        if runtime.activity is not None:
+            runtime.activity.note("unload_entry")
         await runtime.controller.async_stop()
-    unloaded = await hass.config_entries.async_unload_platforms(entry, [Platform.MEDIA_PLAYER])
+    unloaded = await hass.config_entries.async_unload_platforms(
+        entry, [Platform.MEDIA_PLAYER, Platform.SENSOR]
+    )
     remaining = [
         item
         for item in hass.config_entries.async_entries(DOMAIN)

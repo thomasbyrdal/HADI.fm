@@ -458,6 +458,8 @@ def test_speaker_event_ignores_metadata_and_blips() -> None:
     )
     foreign = {**playing_attrs, "media_content_id": "http://other.example/track"}
     assert speaker_event_affects_session("playing", "playing", playing_attrs, foreign) is True
+    mirror = {**playing_attrs, "media_content_id": MIRRORS[1]}
+    assert speaker_event_affects_session("playing", "playing", playing_attrs, mirror) is False
 
 
 async def test_speaker_override_and_invalid_quality() -> None:
@@ -555,7 +557,8 @@ async def test_owns_media_matches_host_when_query_stripped() -> None:
     )
     assert controller.owns_media(MIRRORS[0]) is True
     assert controller.owns_media("http://prem2.di.fm:80/trance_hi") is True
-    assert controller.owns_media("http://prem1.di.fm:80/trance_hi") is False
+    assert controller.owns_media("http://prem1.di.fm:80/trance_hi") is True
+    assert controller.owns_media("http://other.example/trance_hi") is False
 
 
 async def test_attributes_never_include_stream_url_or_listen_key() -> None:
@@ -566,16 +569,20 @@ async def test_attributes_never_include_stream_url_or_listen_key() -> None:
     views = favourite_views(
         [Favourite(id="1", network="di", key="trance", name="Trance")], _catalogue()
     )
-    attrs = playback_attributes(controller.state, views)
+    attrs = playback_attributes(controller.state)
     dumped = str(attrs)
     assert LISTEN_KEY not in dumped
     assert controller.state.stream_url not in dumped
     assert "prem2.di.fm" not in dumped
     assert attrs["station_id"] == "1"
     assert attrs["owned"] is True
-    assert attrs["favourites"][0]["playing"] is True
-    assert attrs["favourites"][0]["artwork_url"]
-    assert not attrs["favourites"][0]["artwork_url"].startswith("http://prem")
+    assert "favourites" not in attrs
+    from custom_components.difm_radio.playback import favourite_attribute_rows
+
+    rows = favourite_attribute_rows(views)
+    assert rows[0]["artwork_url"]
+    assert not rows[0]["artwork_url"].startswith("http://prem")
+    assert "playing" not in rows[0]
     browse = favourite_browse_items(views)
     assert browse == [
         {
@@ -586,3 +593,14 @@ async def test_attributes_never_include_stream_url_or_listen_key() -> None:
         }
     ]
     assert LISTEN_KEY not in str(browse)
+
+
+async def test_owns_media_accepts_mirror_host_change() -> None:
+    controller, _client, _speaker = _controller()
+    await controller.async_play_station(
+        _catalogue(), "1", quality="premium_high", default_speaker=SPEAKER
+    )
+    assert controller.owns_media(MIRRORS[0]) is True
+    assert controller.owns_media(f"http://prem1.di.fm:80/trance_hi?{LISTEN_KEY}") is True
+    assert controller.owns_media("http://prem4.di.fm:80/trance_hi") is True
+    assert controller.owns_media("http://prem2.di.fm:80/ambient_hi") is False

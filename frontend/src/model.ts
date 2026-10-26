@@ -61,6 +61,47 @@ export function isRadioEntity(
   return attrs.integration === DOMAIN || Array.isArray(attrs.favourites);
 }
 
+export function isFavouritesSensor(
+  hass: HomeAssistant | null | undefined,
+  entityId: string,
+): boolean {
+  if (!entityId.startsWith("sensor.")) {
+    return false;
+  }
+  const attrs = hass?.states[entityId]?.attributes ?? {};
+  return attrs.integration === DOMAIN && Array.isArray(attrs.favourites);
+}
+
+export function resolveFavouritesRaw(
+  hass: HomeAssistant | null | undefined,
+  radioEntityId: string,
+  attrs: Record<string, unknown>,
+): unknown {
+  // Prefer an explicit favourites attribute on the radio entity (including []).
+  // New builds omit it and keep the list on sensor.di_fm_radio_favourites.
+  if (Array.isArray(attrs.favourites)) {
+    return attrs.favourites;
+  }
+  if (!hass?.states) {
+    return attrs.favourites;
+  }
+  for (const entityId of Object.keys(hass.states).sort()) {
+    if (!isFavouritesSensor(hass, entityId)) {
+      continue;
+    }
+    const sensorAttrs = hass.states[entityId]?.attributes ?? {};
+    if (
+      typeof sensorAttrs.radio_entity_id === "string" &&
+      sensorAttrs.radio_entity_id &&
+      sensorAttrs.radio_entity_id !== radioEntityId
+    ) {
+      continue;
+    }
+    return sensorAttrs.favourites;
+  }
+  return attrs.favourites;
+}
+
 export function findRadioEntity(hass: HomeAssistant | null | undefined): string | null {
   if (!hass?.states) {
     return null;
@@ -240,8 +281,12 @@ export function deriveView(hass: HomeAssistant | null | undefined, config: Norma
     return emptyView(entityId, !entityId);
   }
   const attrs = entity.attributes ?? {};
-  const favourites = parseFavourites(attrs.favourites);
   const stationId = attrs.station_id == null ? null : String(attrs.station_id);
+  const owned = Boolean(attrs.owned);
+  const favourites = parseFavourites(resolveFavouritesRaw(hass, entityId, attrs)).map((tile) => ({
+    ...tile,
+    playing: Boolean(owned && stationId && tile.id === stationId),
+  }));
   const network = typeof attrs.network === "string" ? attrs.network : null;
   const playing = entity.state === "playing";
   const buffering = entity.state === "buffering";
@@ -263,7 +308,7 @@ export function deriveView(hass: HomeAssistant | null | undefined, config: Norma
     networkLabel: networkLabel(selected?.network || network),
     speakerEntityId,
     speakers: listSpeakers(hass, entityId, speakerEntityId),
-    owned: Boolean(attrs.owned),
+    owned,
     lastError: errorMessage(
       typeof attrs.last_error === "string" ? attrs.last_error : null,
     ),

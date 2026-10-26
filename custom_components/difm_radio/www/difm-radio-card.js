@@ -54,6 +54,32 @@ function isRadioEntity(hass, entityId) {
   const attrs = hass?.states[entityId]?.attributes ?? {};
   return attrs.integration === DOMAIN || Array.isArray(attrs.favourites);
 }
+function isFavouritesSensor(hass, entityId) {
+  if (!entityId.startsWith("sensor.")) {
+    return false;
+  }
+  const attrs = hass?.states[entityId]?.attributes ?? {};
+  return attrs.integration === DOMAIN && Array.isArray(attrs.favourites);
+}
+function resolveFavouritesRaw(hass, radioEntityId, attrs) {
+  if (Array.isArray(attrs.favourites)) {
+    return attrs.favourites;
+  }
+  if (!hass?.states) {
+    return attrs.favourites;
+  }
+  for (const entityId of Object.keys(hass.states).sort()) {
+    if (!isFavouritesSensor(hass, entityId)) {
+      continue;
+    }
+    const sensorAttrs = hass.states[entityId]?.attributes ?? {};
+    if (typeof sensorAttrs.radio_entity_id === "string" && sensorAttrs.radio_entity_id && sensorAttrs.radio_entity_id !== radioEntityId) {
+      continue;
+    }
+    return sensorAttrs.favourites;
+  }
+  return attrs.favourites;
+}
 function findRadioEntity(hass) {
   if (!hass?.states) {
     return null;
@@ -187,8 +213,12 @@ function deriveView(hass, config) {
     return emptyView(entityId, !entityId);
   }
   const attrs = entity.attributes ?? {};
-  const favourites = parseFavourites(attrs.favourites);
   const stationId = attrs.station_id == null ? null : String(attrs.station_id);
+  const owned = Boolean(attrs.owned);
+  const favourites = parseFavourites(resolveFavouritesRaw(hass, entityId, attrs)).map((tile) => ({
+    ...tile,
+    playing: Boolean(owned && stationId && tile.id === stationId)
+  }));
   const network = typeof attrs.network === "string" ? attrs.network : null;
   const playing = entity.state === "playing";
   const buffering = entity.state === "buffering";
@@ -206,7 +236,7 @@ function deriveView(hass, config) {
     networkLabel: networkLabel(selected?.network || network),
     speakerEntityId,
     speakers: listSpeakers(hass, entityId, speakerEntityId),
-    owned: Boolean(attrs.owned),
+    owned,
     lastError: errorMessage(
       typeof attrs.last_error === "string" ? attrs.last_error : null
     ),
@@ -624,27 +654,54 @@ var DifmRadioCard = class extends HTMLElement {
     return document.createElement("difm-radio-card-editor");
   }
   setConfig(config) {
-    this._config = normalizeConfig(config);
-    if (this._hass) {
-      this._view = deriveView(this._hass, this._config);
-      this._signature = viewSignature(this._view);
+    try {
+      this._config = normalizeConfig(config);
+      if (this._hass) {
+        this._view = deriveView(this._hass, this._config);
+        this._signature = viewSignature(this._view);
+      }
+      this._localError = null;
+      this._render(false);
+    } catch (err) {
+      this._localError = errorMessage(
+        null,
+        sanitizeError(err instanceof Error ? err.message : String(err))
+      );
+      try {
+        this._render(true);
+      } catch {
+      }
     }
-    this._render(false);
   }
   set hass(hass) {
     this._hass = hass;
-    const view = deriveView(hass, this._config);
-    const signature = viewSignature(view);
-    if (signature === this._signature && !this._pendingStation) {
+    try {
+      const view = deriveView(hass, this._config);
+      const signature = viewSignature(view);
+      if (signature === this._signature && !this._pendingStation) {
+        this._view = view;
+        return;
+      }
       this._view = view;
-      return;
+      this._signature = signature;
+      this._render(false);
+    } catch (err) {
+      this._localError = errorMessage(
+        null,
+        sanitizeError(err instanceof Error ? err.message : String(err))
+      );
+      try {
+        this._render(true);
+      } catch {
+      }
     }
-    this._view = view;
-    this._signature = signature;
-    this._render(false);
   }
   getCardSize() {
-    return cardSize(this._view.favourites.length, this._config.columns);
+    try {
+      return cardSize(this._view.favourites.length, this._config.columns);
+    } catch {
+      return 4;
+    }
   }
   getGridOptions() {
     return { columns: 12, min_rows: 4 };
@@ -656,15 +713,34 @@ var DifmRadioCard = class extends HTMLElement {
     this._pendingStation = null;
   }
   _render(force) {
-    if (!this.shadowRoot) {
-      this.attachShadow({ mode: "open" });
+    try {
+      if (!this.shadowRoot) {
+        this.attachShadow({ mode: "open" });
+      }
+      const card = this.shadowRoot.querySelector(".card");
+      if (!card || force) {
+        this._mount();
+        return;
+      }
+      this._patch();
+    } catch (err) {
+      this._localError = errorMessage(
+        null,
+        sanitizeError(err instanceof Error ? err.message : String(err))
+      );
+      if (!this.shadowRoot) {
+        this.attachShadow({ mode: "open" });
+      }
+      this.shadowRoot.innerHTML = `
+        <style>${CARD_STYLES}</style>
+        <div class="card">
+          <div class="header"><div class="title">${escapeAttr(this._config.title)}</div></div>
+          <div class="error" role="alert">${escapeAttr(this._localError || "Card render failed.")}</div>
+        </div>
+      `;
+      this._bound = false;
+      this._speakerKey = "";
     }
-    const card = this.shadowRoot.querySelector(".card");
-    if (!card || force) {
-      this._mount();
-      return;
-    }
-    this._patch();
   }
   _mount() {
     const view = this._view;

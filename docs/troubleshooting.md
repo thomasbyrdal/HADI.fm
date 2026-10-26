@@ -35,6 +35,13 @@ Home Assistant needs `options.step.init.menu_options` translations. Update to 0.
 
 HACS does not treat a new `main` commit as an update if the integration was first installed before any GitHub release existed. Use **⋮ → Redownload** and pick the release version.
 
+## Card shows Configuration error after hours of playback
+
+1. Open the browser console on the dashboard **before** reloading.
+2. In Home Assistant logs, search for `DI.FM Radio [` — those lines are breadcrumbs of the last action.
+3. Download **Diagnostics** for the integration; the `activity` section lists recent actions without listen keys.
+4. Confirm `media_player.di_fm_radio` still exists. From 0.1.8, favourite tiles also appear on `sensor.di_fm_radio_favourites`.
+
 ## Card is missing
 
 This is an **integration** card, not a HACS dashboard plugin. It will not appear under `/config/www/community/`. The file lives at:

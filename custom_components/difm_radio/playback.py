@@ -18,7 +18,6 @@ from urllib.parse import urlsplit
 from .const import (
     ATTR_AVAILABLE,
     ATTR_CHANNEL_KEY,
-    ATTR_FAVOURITES,
     ATTR_NETWORK,
     ATTR_STATION_ID,
     PLAYBACK_CONFIRM_TIMEOUT,
@@ -35,8 +34,10 @@ from .exceptions import (
     UnknownStationError,
 )
 from .helpers import (
+    is_audioaddict_stream_host,
     match_station_from_stream,
     redact_url,
+    same_icecast_mount,
     stream_looks_ours,
     validate_media_player_entity,
 )
@@ -54,6 +55,7 @@ UNAVAILABLE_STATES = frozenset({STATE_UNAVAILABLE, "unknown"})
 SPEAKER_SESSION_ATTRS = frozenset(
     {"media_content_id", "volume_level", "supported_features"}
 )
+ACTIVE_LOGICAL_STATES = frozenset({STATE_PLAYING, STATE_BUFFERING})
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -132,13 +134,13 @@ class DifmRadioRuntime:
 
     coordinator: Any
     controller: RadioController
+    activity: Any = None
     entity: Any = None
+    favourites_entity: Any = None
 
 
-def playback_attributes(
-    state: PlaybackState, favourite_views: list[FavouriteView]
-) -> dict[str, Any]:
-    """HA-safe attributes. Stream URLs and listen keys are never included."""
+def playback_attributes(state: PlaybackState) -> dict[str, Any]:
+    """Hot-path HA attributes. Favourites live on the dedicated sensor entity."""
 
     station = state.station
     return {
@@ -150,19 +152,23 @@ def playback_attributes(
         "last_error": state.last_error_code,
         "speaker_entity_id": state.speaker_entity_id,
         "owned": state.owned,
-        ATTR_FAVOURITES: [
-            {
-                "id": view.id,
-                "name": view.name,
-                "network": view.network,
-                "key": view.key,
-                "available": view.available,
-                "artwork_url": view.artwork_url,
-                "playing": bool(station and station.id == view.id and state.owned),
-            }
-            for view in favourite_views
-        ],
     }
+
+
+def favourite_attribute_rows(favourite_views: list[FavouriteView]) -> list[dict[str, Any]]:
+    """Cold-path favourite rows for the sensor entity. No stream URLs."""
+
+    return [
+        {
+            "id": view.id,
+            "name": view.name,
+            "network": view.network,
+            "key": view.key,
+            "available": view.available,
+            "artwork_url": view.artwork_url,
+        }
+        for view in favourite_views
+    ]
 
 
 def rounded_volume(value: Any) -> float | None:
@@ -200,6 +206,15 @@ def speaker_event_affects_session(
             if rounded_volume(old_attrs.get(key)) != rounded_volume(new_attrs.get(key)):
                 return True
             continue
+        if key == "media_content_id":
+            old_id = old_attrs.get(key)
+            new_id = new_attrs.get(key)
+            if old_id == new_id or same_icecast_mount(
+                str(old_id) if old_id else None,
+                str(new_id) if new_id else None,
+            ):
+                continue
+            return True
         if old_attrs.get(key) != new_attrs.get(key):
             return True
     return False
@@ -229,13 +244,19 @@ class RadioController:
         *,
         confirm_timeout: float = PLAYBACK_CONFIRM_TIMEOUT,
         poll_interval: float = PLAYBACK_POLL_INTERVAL,
+        activity: Any | None = None,
     ) -> None:
         self._client = client
         self._speakers = speakers
         self._confirm_timeout = confirm_timeout
         self._poll_interval = poll_interval
+        self._activity = activity
         self.state = PlaybackState()
         self._listeners: list[Callable[[], None]] = []
+
+    def _note(self, action: str, detail: str = "", *, level: int = logging.INFO) -> None:
+        if self._activity is not None:
+            self._activity.note(action, detail, level=level)
 
     def add_listener(self, callback: Callable[[], None]) -> Callable[[], None]:
         """Register a no-arg callback. Returns an unsubscribe function."""
@@ -276,6 +297,7 @@ class RadioController:
     ) -> PlaybackState:
         """Resolve a station and play it on the chosen speaker."""
 
+        self._note("play_requested", f"station={station_id}")
         if catalogue is None:
             raise PlaybackError("cannot_connect", "Station catalogue is not available")
         station = catalogue.stations.get(str(station_id).strip())
@@ -308,6 +330,10 @@ class RadioController:
         while index < len(attempts):
             result = await self._try_play(speaker_id, station, attempts[index])
             if result == "ok":
+                self._note(
+                    "play_confirmed",
+                    f"station={station.id} speaker={speaker_id}",
+                )
                 return self.state
             if result == "unsupported":
                 last_error = PlaybackError(
@@ -327,6 +353,13 @@ class RadioController:
         await self._async_stop_owned()
         self._set_error(last_error.code, str(last_error))
         self.state.logical_state = STATE_IDLE
+        if self._activity is not None:
+            self._activity.warn_with_context(
+                "Playback failed for station %s on %s: %s",
+                station_id,
+                speaker_id,
+                last_error.code,
+            )
         self._notify()
         raise last_error
 
@@ -335,8 +368,10 @@ class RadioController:
 
         if not self.state.owned:
             return self.state
+        self._note("stop_requested", self.state.speaker_entity_id or "")
         await self._async_stop_owned()
         self.state.logical_state = STATE_STOPPED
+        self._note("stop_done")
         self._notify()
         return self.state
 
@@ -352,9 +387,18 @@ class RadioController:
         await self._speakers.async_set_volume(speaker_id, max(0.0, min(1.0, float(volume))))
 
     def _session_key(self) -> tuple[Any, ...]:
+        """Identity used to decide whether Home Assistant should be notified.
+
+        ``playing`` and ``buffering`` collapse to the same bucket so speakers
+        that flap between those states do not rewrite entity attributes.
+        """
+
         station = self.state.station
+        logical = self.state.logical_state
+        if logical in ACTIVE_LOGICAL_STATES:
+            logical = "active"
         return (
-            self.state.logical_state,
+            logical,
             self.state.owned,
             self.state.confirmed,
             self.state.speaker_entity_id,
@@ -376,18 +420,34 @@ class RadioController:
             return self.state
         snapshot = await self._speakers.async_get(speaker_id)
         if not snapshot.exists or snapshot.state in UNAVAILABLE_STATES:
+            self._note(
+                "speaker_blip_ignored",
+                f"{speaker_id} state={snapshot.state}",
+                level=logging.DEBUG,
+            )
             return self.state
         if not self.state.owned:
             return self.state
         before = self._session_key()
         if snapshot.media_content_id and not self.owns_media(snapshot.media_content_id):
+            self._note(
+                "session_released_foreign_media",
+                speaker_id,
+                level=logging.INFO,
+            )
             self._release_session(STATE_IDLE)
         elif snapshot.state in CONFIRM_STATES:
             self.state.confirmed = True
             self.state.logical_state = (
                 STATE_PLAYING if snapshot.state == STATE_PLAYING else STATE_BUFFERING
             )
+            if same_icecast_mount(self.state.stream_url, snapshot.media_content_id):
+                self.state.stream_url = snapshot.media_content_id or self.state.stream_url
         elif snapshot.state in LOST_STATES:
+            self._note(
+                "session_released_speaker_idle",
+                f"{speaker_id} state={snapshot.state}",
+            )
             self._release_session(STATE_IDLE)
         if self._session_key() != before:
             self._notify()
@@ -436,6 +496,10 @@ class RadioController:
             )
             self.state.last_error = None
             self.state.last_error_code = None
+            self._note(
+                "session_adopted",
+                f"station={station.id} speaker={speaker_id}",
+            )
             self._notify()
             return self.state
         return self.state
@@ -452,9 +516,23 @@ class RadioController:
             return False
         if media_content_id == self.state.stream_url:
             return True
+        if same_icecast_mount(self.state.stream_url, media_content_id):
+            return True
         ours = urlsplit(self.state.stream_url)
         theirs = urlsplit(media_content_id)
-        return bool(ours.netloc and ours.netloc == theirs.netloc and ours.path == theirs.path)
+        if not ours.path or ours.path != theirs.path:
+            return False
+        return bool(
+            ours.netloc
+            and theirs.netloc
+            and (
+                ours.netloc == theirs.netloc
+                or (
+                    is_audioaddict_stream_host(ours.netloc)
+                    and is_audioaddict_stream_host(theirs.netloc)
+                )
+            )
+        )
 
     async def _async_resolve(self, station: Station, quality: str) -> list[str]:
         try:

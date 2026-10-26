@@ -26,13 +26,18 @@ describe("DifmRadioCard", () => {
       "media_player.di_fm_radio": radioEntity({
         attributes: { favourites: [], integration: "difm_radio" },
       }),
+      "sensor.di_fm_radio_favourites": entity("sensor.di_fm_radio_favourites", "0", {
+        integration: "difm_radio",
+        favourites: [],
+        radio_entity_id: "media_player.di_fm_radio",
+      }),
     });
     const { card } = mount(hass);
     expect(card.shadowRoot!.textContent).toContain("Add favourite stations");
     expect(card.shadowRoot!.querySelectorAll(".tile")).toHaveLength(0);
   });
 
-  it("renders favourite tiles from entity attributes", () => {
+  it("renders favourite tiles from the favourites sensor", () => {
     const { card } = mount();
     const tiles = card.shadowRoot!.querySelectorAll(".tile");
     expect(tiles).toHaveLength(3);

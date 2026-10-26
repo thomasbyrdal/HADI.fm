@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from homeassistant.components.media_player import (
@@ -23,7 +24,6 @@ from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.restore_state import RestoreEntity
 
 from .const import (
-    ATTR_FAVOURITES,
     ATTR_STATION_ID,
     CONF_DEFAULT_MEDIA_PLAYER,
     CONF_LISTEN_KEY,
@@ -43,6 +43,8 @@ from .playback import (
     rounded_volume,
     speaker_event_affects_session,
 )
+
+_LOGGER = logging.getLogger(__name__)
 
 _STATE_MAP = {
     STATE_PLAYING: MediaPlayerState.PLAYING,
@@ -132,9 +134,6 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
     _attr_media_content_type = MediaType.MUSIC
     _attr_should_poll = False
     _attr_translation_key = "radio"
-    _unrecorded_attributes = frozenset(
-        getattr(MediaPlayerEntity, "_unrecorded_attributes", frozenset())
-    ) | frozenset({ATTR_FAVOURITES})
 
     def __init__(self, entry: ConfigEntry, runtime: DifmRadioRuntime) -> None:
         self._entry = entry
@@ -155,6 +154,11 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
     @property
     def controller(self) -> RadioController:
         return self._runtime.controller
+
+    def _activity_note(self, action: str, detail: str = "", *, level: int = logging.INFO) -> None:
+        activity = self._runtime.activity
+        if activity is not None:
+            activity.note(action, detail, level=level)
 
     @property
     def available(self) -> bool:
@@ -214,32 +218,30 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
     def _attributes_cache_key(self) -> tuple[Any, ...]:
         state = self.controller.state
         station = state.station
-        coordinator = self._runtime.coordinator
+        logical = state.logical_state
+        if logical in {STATE_PLAYING, STATE_BUFFERING}:
+            logical = "active"
         return (
-            state.logical_state,
+            logical,
             state.owned,
             state.last_error_code,
             state.speaker_entity_id,
             station.id if station else None,
-            id(coordinator.data),
-            tuple((fav.id, fav.network, fav.key) for fav in coordinator.favourites),
         )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         key = self._attributes_cache_key()
         if self._cached_attributes is None or self._cached_attributes_key != key:
-            self._cached_attributes = playback_attributes(
-                self.controller.state, self._runtime.coordinator.favourite_views
-            )
+            self._cached_attributes = playback_attributes(self.controller.state)
             self._cached_attributes_key = key
         return self._cached_attributes
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self.async_on_remove(self.controller.add_listener(self._handle_controller))
-        self.async_on_remove(self._runtime.coordinator.async_add_listener(self._handle_controller))
         self.async_on_remove(self._unwatch_speaker)
+        self._activity_note("media_player_added")
         await self._async_restore_speaker_session()
         self.async_watch_speaker()
         await self._async_refresh_speaker_capabilities()
@@ -258,6 +260,11 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
         if default_speaker:
             candidates.append(default_speaker)
         listen_key = str(self._entry.data.get(CONF_LISTEN_KEY, "")).strip() or None
+        self._activity_note(
+            "restore_session_check",
+            f"candidates={','.join(candidates) or 'none'}",
+            level=logging.DEBUG,
+        )
         await self.controller.async_adopt_playing_speaker(
             self._runtime.coordinator.data,
             candidates,
@@ -272,6 +279,7 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
     def async_on_options_update(self) -> None:
         """Re-watch the default speaker after options change without reloading."""
 
+        self._activity_note("options_updated")
         self.async_watch_speaker()
         self.async_write_ha_state()
 
@@ -282,6 +290,7 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
         entity_id = self.controller.state.speaker_entity_id or self._default_speaker()
         if not entity_id:
             return
+        self._activity_note("watch_speaker", entity_id, level=logging.DEBUG)
         self._unsub_speaker = async_track_state_change_event(
             self.hass, [entity_id], self._async_speaker_event
         )
@@ -309,11 +318,16 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
             getattr(new_state, "attributes", None),
         ):
             return
-        volume_before = (self._speaker_volume, self._speaker_supports_volume)
+        self._activity_note(
+            "speaker_event",
+            f"{getattr(old_state, 'state', None)}->{getattr(new_state, 'state', None)}",
+            level=logging.DEBUG,
+        )
+        # Session changes notify the controller listener, which writes HA state.
+        # Volume is read from the physical speaker by the card, so volume-only
+        # updates do not rewrite the logical player.
         await self.controller.async_sync_from_speaker()
         await self._async_refresh_speaker_capabilities()
-        if (self._speaker_volume, self._speaker_supports_volume) != volume_before:
-            self.async_write_ha_state()
 
     async def _async_refresh_speaker_capabilities(self) -> None:
         entity_id = self.controller.state.speaker_entity_id or self._default_speaker()
@@ -368,6 +382,7 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
     async def async_set_volume_level(self, volume: float) -> None:
         await self.controller.async_set_volume(volume)
         self._speaker_volume = max(0.0, min(1.0, float(volume)))
+        # Card reads the speaker entity; avoid rewriting favourites-era payload.
         self.async_write_ha_state()
 
     async def _async_play(self, station_id: str) -> None:
@@ -379,6 +394,9 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
                 default_speaker=self._default_speaker(),
             )
         except PlaybackError as err:
+            activity = self._runtime.activity
+            if activity is not None:
+                activity.warn_with_context("Play service failed: %s", err.code)
             raise HomeAssistantError(str(err)) from err
         self.async_watch_speaker()
         await self._async_refresh_speaker_capabilities()

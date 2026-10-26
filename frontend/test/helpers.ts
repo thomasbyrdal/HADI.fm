@@ -12,6 +12,33 @@ export function entity(
   return { entity_id: entityId, state, attributes };
 }
 
+export const SAMPLE_FAVOURITES = [
+  {
+    id: "1",
+    name: "Trance",
+    network: "di",
+    key: "trance",
+    available: true,
+    artwork_url: "https://cdn-images.audioaddict.com/trance.png",
+  },
+  {
+    id: "12",
+    name: "Ambient",
+    network: "di",
+    key: "ambient",
+    available: true,
+    artwork_url: null,
+  },
+  {
+    id: "999",
+    name: "XChiptunes",
+    network: "di",
+    key: "chiptunes",
+    available: false,
+    artwork_url: null,
+  },
+];
+
 export function radioEntity(overrides: Partial<HassEntity> = {}): HassEntity {
   return entity("media_player.di_fm_radio", "idle", {
     integration: "difm_radio",
@@ -24,35 +51,16 @@ export function radioEntity(overrides: Partial<HassEntity> = {}): HassEntity {
     owned: false,
     last_error: null,
     speaker_entity_id: "media_player.living_room",
-    favourites: [
-      {
-        id: "1",
-        name: "Trance",
-        network: "di",
-        key: "trance",
-        available: true,
-        artwork_url: "https://cdn-images.audioaddict.com/trance.png",
-        playing: false,
-      },
-      {
-        id: "12",
-        name: "Ambient",
-        network: "di",
-        key: "ambient",
-        available: true,
-        artwork_url: null,
-        playing: false,
-      },
-      {
-        id: "999",
-        name: "XChiptunes",
-        network: "di",
-        key: "chiptunes",
-        available: false,
-        artwork_url: null,
-        playing: false,
-      },
-    ],
+    ...overrides.attributes,
+  });
+}
+
+export function favouritesSensor(overrides: Partial<HassEntity> = {}): HassEntity {
+  return entity("sensor.di_fm_radio_favourites", "3", {
+    integration: "difm_radio",
+    friendly_name: "Favourites",
+    radio_entity_id: "media_player.di_fm_radio",
+    favourites: SAMPLE_FAVOURITES,
     ...overrides.attributes,
   });
 }
@@ -82,6 +90,9 @@ export function createHass(
   };
   if (!hass.states["media_player.di_fm_radio"]) {
     hass.states["media_player.di_fm_radio"] = radioEntity();
+  }
+  if (!hass.states["sensor.di_fm_radio_favourites"]) {
+    hass.states["sensor.di_fm_radio_favourites"] = favouritesSensor();
   }
   return hass;
 }

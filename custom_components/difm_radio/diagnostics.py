@@ -16,6 +16,7 @@ def build_diagnostics_payload(
     catalogue: Any = None,
     favourite_views: list[Any] | None = None,
     controller: Any = None,
+    activity_tracker: Any = None,
     last_update_success: bool | None = None,
     last_exception: Exception | None = None,
     frontend_registered: bool | None = None,
@@ -36,6 +37,9 @@ def build_diagnostics_payload(
         if getattr(state, "stream_url", None):
             # Presence only. The URL itself is a secret.
             playback["has_stream_url"] = True
+    activity = None
+    if activity_tracker is not None and hasattr(activity_tracker, "summary"):
+        activity = activity_tracker.summary()
     return {
         "integration": {
             "domain": DOMAIN,
@@ -70,6 +74,7 @@ def build_diagnostics_payload(
             for view in (favourite_views or [])
         ],
         "playback": playback,
+        "activity": activity,
     }
 
 
@@ -79,6 +84,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, Any]:
     runtime = getattr(entry, "runtime_data", None)
     coordinator = getattr(runtime, "coordinator", runtime)
     controller = getattr(runtime, "controller", None)
+    activity_tracker = getattr(runtime, "activity", None)
     catalogue = coordinator.data if coordinator and getattr(coordinator, "data", None) else None
     favourite_views = coordinator.favourite_views if coordinator else []
     return build_diagnostics_payload(
@@ -87,6 +93,7 @@ async def async_get_config_entry_diagnostics(hass, entry) -> dict[str, Any]:
         catalogue=catalogue,
         favourite_views=favourite_views,
         controller=controller,
+        activity_tracker=activity_tracker,
         last_update_success=getattr(coordinator, "last_update_success", None),
         last_exception=getattr(coordinator, "last_exception", None),
         frontend_registered=bool(hass.data.get(f"{DOMAIN}_frontend")) if hass else None,

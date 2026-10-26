@@ -71,6 +71,19 @@ describe("findRadioEntity", () => {
     expect(view.entityId).toBe("media_player.di_fm_radio");
     expect(view.favourites).toHaveLength(3);
   });
+
+  it("reads favourites from the sensor and marks the playing tile from the radio entity", () => {
+    const hass = createHass({
+      "media_player.di_fm_radio": {
+        ...radioEntity({ attributes: { station_id: "1", owned: true } }),
+        state: "playing",
+      },
+    });
+    const view = deriveView(hass, normalizeConfig({ entity: "media_player.di_fm_radio" }));
+    expect(view.favourites).toHaveLength(3);
+    expect(view.favourites.find((tile) => tile.id === "1")?.playing).toBe(true);
+    expect(view.favourites.find((tile) => tile.id === "12")?.playing).toBe(false);
+  });
 });
 
 describe("parseFavourites and deriveView", () => {

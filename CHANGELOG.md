@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.8 — 2026-10-26
+
+- Harden the Lovelace card so render failures never become a blank Configuration error
+- Move favourite tiles to a dedicated sensor so playback state updates stay small
+- Ignore Icecast mirror-host rewrites and playing/buffering flaps
+- Keep catalogue refresh failures from unloading the integration
+- Add activity breadcrumbs in logs and diagnostics for the last successful action
+
 ## 0.1.7 — 2026-10-25
 
 - Ignore speaker metadata ticks so long playback no longer floods Home Assistant state

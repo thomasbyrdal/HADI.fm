@@ -16,6 +16,7 @@ from custom_components.difm_radio.helpers import (
     parse_favourites,
     redact_mapping,
     redact_url,
+    same_icecast_mount,
     stream_carries_listen_key,
     stream_looks_ours,
     validate_media_player_entity,
@@ -201,3 +202,5 @@ def test_stream_identity_and_station_match() -> None:
         match_station_from_stream(catalogue, "http://other.example/track", hint_station_id="1")
         is None
     )
+    assert same_icecast_mount(di_url, "http://prem1.di.fm:80/trance_hi") is True
+    assert same_icecast_mount(di_url, "http://prem2.di.fm:80/ambient_hi") is False

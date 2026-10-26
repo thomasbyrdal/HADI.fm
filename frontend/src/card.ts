@@ -52,29 +52,58 @@ export class DifmRadioCard extends HTMLElement {
   }
 
   setConfig(config: CardConfig): void {
-    this._config = normalizeConfig(config);
-    if (this._hass) {
-      this._view = deriveView(this._hass, this._config);
-      this._signature = viewSignature(this._view);
+    try {
+      this._config = normalizeConfig(config);
+      if (this._hass) {
+        this._view = deriveView(this._hass, this._config);
+        this._signature = viewSignature(this._view);
+      }
+      this._localError = null;
+      this._render(false);
+    } catch (err) {
+      this._localError = errorMessage(
+        null,
+        sanitizeError(err instanceof Error ? err.message : String(err)),
+      );
+      try {
+        this._render(true);
+      } catch {
+        // Never throw into Lovelace — that becomes "Configuration error".
+      }
     }
-    this._render(false);
   }
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
-    const view = deriveView(hass, this._config);
-    const signature = viewSignature(view);
-    if (signature === this._signature && !this._pendingStation) {
+    try {
+      const view = deriveView(hass, this._config);
+      const signature = viewSignature(view);
+      if (signature === this._signature && !this._pendingStation) {
+        this._view = view;
+        return;
+      }
       this._view = view;
-      return;
+      this._signature = signature;
+      this._render(false);
+    } catch (err) {
+      this._localError = errorMessage(
+        null,
+        sanitizeError(err instanceof Error ? err.message : String(err)),
+      );
+      try {
+        this._render(true);
+      } catch {
+        // Swallow — Lovelace maps card exceptions to Configuration error.
+      }
     }
-    this._view = view;
-    this._signature = signature;
-    this._render(false);
   }
 
   getCardSize(): number {
-    return cardSize(this._view.favourites.length, this._config.columns);
+    try {
+      return cardSize(this._view.favourites.length, this._config.columns);
+    } catch {
+      return 4;
+    }
   }
 
   getGridOptions(): Record<string, number | string> {
@@ -90,15 +119,34 @@ export class DifmRadioCard extends HTMLElement {
   }
 
   private _render(force: boolean): void {
-    if (!this.shadowRoot) {
-      this.attachShadow({ mode: "open" });
+    try {
+      if (!this.shadowRoot) {
+        this.attachShadow({ mode: "open" });
+      }
+      const card = this.shadowRoot!.querySelector(".card");
+      if (!card || force) {
+        this._mount();
+        return;
+      }
+      this._patch();
+    } catch (err) {
+      this._localError = errorMessage(
+        null,
+        sanitizeError(err instanceof Error ? err.message : String(err)),
+      );
+      if (!this.shadowRoot) {
+        this.attachShadow({ mode: "open" });
+      }
+      this.shadowRoot!.innerHTML = `
+        <style>${CARD_STYLES}</style>
+        <div class="card">
+          <div class="header"><div class="title">${escapeAttr(this._config.title)}</div></div>
+          <div class="error" role="alert">${escapeAttr(this._localError || "Card render failed.")}</div>
+        </div>
+      `;
+      this._bound = false;
+      this._speakerKey = "";
     }
-    const card = this.shadowRoot!.querySelector(".card");
-    if (!card || force) {
-      this._mount();
-      return;
-    }
-    this._patch();
   }
 
   private _mount(): void {

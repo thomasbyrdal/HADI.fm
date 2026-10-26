@@ -333,6 +333,26 @@ def stream_looks_ours(url: str, listen_key: str | None) -> bool:
     return is_audioaddict_stream_host(urlsplit(url).netloc)
 
 
+def same_icecast_mount(left: str | None, right: str | None) -> bool:
+    """Return whether two URLs point at the same AudioAddict Icecast mount.
+
+    Mirror host changes (``prem1`` vs ``prem2``) and listen-key query differences
+    are ignored so speaker metadata rewrites do not look like foreign media.
+    """
+
+    if not left or not right:
+        return False
+    left_parts = urlsplit(left)
+    right_parts = urlsplit(right)
+    if not left_parts.path or left_parts.path != right_parts.path:
+        return False
+    if left_parts.netloc == right_parts.netloc:
+        return True
+    return is_audioaddict_stream_host(left_parts.netloc) and is_audioaddict_stream_host(
+        right_parts.netloc
+    )
+
+
 def _mount_name(path: str) -> str:
     return path.strip("/").split("/")[-1]
 
