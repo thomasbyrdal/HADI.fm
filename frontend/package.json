@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/register.ts --bundle --format=esm --target=es2022 --outfile=../custom_components/difm_radio/www/difm-radio-card.js --legal-comments=none",
+    "build": "esbuild src/register.ts --bundle --format=esm --target=es2022 --outfile=../custom_components/difm_radio/www/difm-radio-card.js --legal-comments=none && esbuild src/settings-register.ts --bundle --format=esm --target=es2022 --outfile=../custom_components/difm_radio/www/difm-radio-settings.js --legal-comments=none",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

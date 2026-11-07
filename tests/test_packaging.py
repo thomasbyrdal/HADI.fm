@@ -28,10 +28,13 @@ def test_hacs_and_manifest_required_fields() -> None:
     assert (INTEGRATION / "translations" / "en.json").is_file()
     assert (INTEGRATION / "translations" / "en-GB.json").is_file()
     strings = json.loads((INTEGRATION / "strings.json").read_text(encoding="utf-8"))
-    menu = strings["options"]["step"]["init"]["menu_options"]
-    assert menu["favourites"]
-    assert menu["player"]
-    assert menu["artwork"]
+    init_step = strings["options"]["step"]["init"]
+    assert "settings panel" in init_step["description"].lower()
+    assert "data" not in init_step
+    assert "menu_options" not in init_step
+    assert "artwork" not in strings["options"]["step"]
+    assert (INTEGRATION / "www" / "difm-radio-settings.js").is_file()
+    assert (INTEGRATION / "websocket_api.py").is_file()
     assert (ROOT / "LICENSE").is_file()
     assert (ROOT / "CHANGELOG.md").is_file()
 
@@ -43,6 +46,8 @@ def test_clean_install_layout_is_self_contained() -> None:
         "config_flow.py",
         "media_player.py",
         "www/difm-radio-card.js",
+        "www/difm-radio-settings.js",
+        "websocket_api.py",
         "strings.json",
     ]
     for relative in required:

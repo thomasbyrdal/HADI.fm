@@ -30,8 +30,10 @@ async def async_setup(hass, _config) -> bool:
     """Register the Lovelace card before config entries load."""
 
     from .frontend import async_register_frontend
+    from .websocket_api import async_register_websocket_api
 
     await async_register_frontend(hass)
+    async_register_websocket_api(hass)
     return True
 
 
@@ -45,10 +47,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .activity import ActivityTracker
     from .coordinator import DifmRadioCoordinator
     from .exceptions import CannotConnectError, InvalidListenKeyError, InvalidResponseError
+    from .frontend import async_register_frontend
     from .media_player import HomeAssistantSpeakerPort
     from .playback import DifmRadioRuntime, RadioController
     from .provider import AudioAddictClient, describe_request_error
     from .services import async_setup_services
+    from .websocket_api import async_register_websocket_api
 
     listen_key = str(entry.data.get(CONF_LISTEN_KEY, "")).strip()
     if not listen_key:
@@ -67,9 +71,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         activity.warn_with_context("Listen key validation unreachable: %s", detail)
         raise ConfigEntryNotReady(detail) from err
 
-    from .frontend import async_register_frontend
-
     await async_register_frontend(hass)
+    async_register_websocket_api(hass)
     coordinator = DifmRadioCoordinator(hass, entry, client, activity=activity)
     await coordinator.async_config_entry_first_refresh()
     controller = RadioController(

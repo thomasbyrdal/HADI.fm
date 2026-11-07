@@ -22,26 +22,26 @@ Never paste your listen key, Icecast URLs that contain it, or account passwords 
 - Inferred-inactive names (`X` + capital letter) stay in the catalogue but cannot be added as new favourites.
 - A favourite that disappeared is kept and marked unavailable.
 
-## Configure shows three empty arrows
+## Configure / favourite settings
 
-Home Assistant needs `options.step.init.menu_options` translations. Update to 0.1.1 or later, then restart. The menu should list **Favourite stations**, **Default speaker and quality**, **Filter services**, and **Station artwork**. If a form after that is empty, wait until the catalogue refresh finishes and try **Favourite stations** again.
+**Configure** opens the **DI.FM Radio** settings panel (also in the sidebar). Use the artwork grid to manage favourites, plus the speaker and quality dropdowns. If the panel is empty, wait until the catalogue refresh finishes and open it again.
 
 ## Card has no stations to play
 
 1. Add **DI.FM favourite stations** from the **By card** tab, not a generic media-player tile.
 2. In the card editor, set the entity to `media_player.di_fm_radio` (or the integration player), not the speaker.
-3. Confirm **Configure → Favourite stations** still has the stations you picked during setup.
+3. Confirm the **DI.FM Radio** settings panel still lists the favourite stations you picked during setup.
 4. Hard-refresh the browser so it loads `difm-radio-card.js?v=0.1.4`.
 
 HACS does not treat a new `main` commit as an update if the integration was first installed before any GitHub release existed. Use **⋮ → Redownload** and pick the release version.
 
 ## Custom element doesn't exist: difm-radio-card
 
-1. Update to **0.1.9** or later, then restart Home Assistant.
-2. Open **Settings → Dashboards → Resources** and confirm a **module** resource for `/difm_radio/difm-radio-card.js?v=0.1.9` (or newer).
+1. Update to **0.2.0** or later, then restart Home Assistant.
+2. Open **Settings → Dashboards → Resources** and confirm a **module** resource for `/difm_radio/difm-radio-card.js?v=0.2.0` (or newer).
 3. If it is missing, add that URL yourself as type **module**, then hard-refresh the browser.
 4. In logs, search for `Serving DI.FM Radio card` and `Registered Lovelace card resource`.
-5. In the browser console after a hard refresh you should see `DI.FM Radio card v0.1.9`.
+5. In the browser console after a hard refresh you should see `DI.FM Radio card v0.2.0`.
 
 ## Card shows Configuration error after hours of playback
 

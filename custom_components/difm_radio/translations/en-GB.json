@@ -73,43 +73,7 @@
     "step": {
       "init": {
         "title": "DI.FM Radio options",
-        "description": "Change the speaker, favourite stations, or artwork.",
-        "menu_options": {
-          "player": "Default speaker and quality",
-          "favourites": "Favourite stations",
-          "favourites_filter": "Filter services before editing favourites",
-          "artwork": "Station artwork"
-        }
-      },
-      "player": {
-        "title": "Default speaker",
-        "description": "Change the default speaker or stream quality.",
-        "data": {
-          "default_media_player": "Default speaker",
-          "stream_quality": "Stream quality"
-        }
-      },
-      "favourites_filter": {
-        "title": "Filter services",
-        "description": "Choose which services to show in the next favourite list. Existing favourites stay selected even if their service is hidden here.",
-        "data": {
-          "service_filter": "Services"
-        }
-      },
-      "favourites": {
-        "title": "Favourite stations",
-        "description": "Add or remove favourites. The previous order is kept for stations that remain selected.",
-        "data": {
-          "favourites": "Favourites"
-        }
-      },
-      "artwork": {
-        "title": "Station artwork",
-        "description": "Set a custom image URL for a favourite when the official artwork is missing or unsuitable. Leave the URL empty to clear an override.",
-        "data": {
-          "station_id": "Station",
-          "artwork_override": "Artwork URL"
-        }
+        "description": "Speaker, stream quality, and favourite stations are managed in the DI.FM Radio settings panel. Open it from the sidebar, or use Configure on this integration to open the artwork grid editor."
       }
     },
     "error": {

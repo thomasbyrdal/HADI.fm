@@ -84,30 +84,26 @@ async def test_user_flow_success(hass, monkeypatch, session) -> None:
     assert result["options"][CONF_DEFAULT_MEDIA_PLAYER] == "media_player.living_room"
 
 
-async def test_options_flow_updates_speaker(hass, monkeypatch, session) -> None:
-    hass.states.async_set("media_player.kitchen", "idle")
+async def test_options_flow_preserves_options(hass, monkeypatch, session) -> None:
+    session.add("GET", "/networks", 200, [])
+    _patch_client(monkeypatch, session)
+    options = {
+        CONF_FAVOURITES: [{"id": "1", "network": "di", "key": "trance", "name": "Trance"}],
+        CONF_DEFAULT_MEDIA_PLAYER: "media_player.living_room",
+        CONF_STREAM_QUALITY: "premium_high",
+    }
     entry = MockConfigEntry(
         domain=DOMAIN,
         data={CONF_LISTEN_KEY: "valid-listen-key-1"},
-        options={
-            CONF_FAVOURITES: [{"id": "1", "network": "di", "key": "trance", "name": "Trance"}],
-            CONF_DEFAULT_MEDIA_PLAYER: "media_player.living_room",
-            CONF_STREAM_QUALITY: "premium_high",
-        },
+        options=options,
     )
     entry.add_to_hass(hass)
+
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] == "menu"
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"next_step_id": "player"}
-    )
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"],
-        {
-            CONF_DEFAULT_MEDIA_PLAYER: "media_player.kitchen",
-            CONF_STREAM_QUALITY: "premium",
-        },
-    )
+    assert result["type"] == "form"
+    assert result["step_id"] == "init"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
     assert result["type"] == "create_entry"
-    assert entry.options[CONF_DEFAULT_MEDIA_PLAYER] == "media_player.kitchen"
-    assert entry.options[CONF_STREAM_QUALITY] == "premium"
+    assert entry.options[CONF_DEFAULT_MEDIA_PLAYER] == "media_player.living_room"
+    assert entry.options[CONF_STREAM_QUALITY] == "premium_high"
+    assert parse_favourites(entry.options[CONF_FAVOURITES])[0].id == "1"

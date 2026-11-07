@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 — 2026-11-07
+
+- Replace the Configure favourites dropdown with a settings panel artwork grid (6×6, scrollable)
+- Add favourite stations through a service dropdown and dual selectable/selected grids
+- Manage default speaker and stream quality in the same settings panel
+- Expose `difm_radio/get_config` and `difm_radio/set_config` websocket commands
+
 ## 0.1.9 — 2026-10-26
 
 - Fix `Custom element doesn't exist: difm-radio-card` after restart by waiting for Lovelace before registering the card resource

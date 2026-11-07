@@ -17,12 +17,20 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from .const import CARD_FILENAME, DOMAIN, FRONTEND_URL_BASE, INTEGRATION_VERSION
+from .const import (
+    CARD_FILENAME,
+    DOMAIN,
+    FRONTEND_URL_BASE,
+    INTEGRATION_VERSION,
+    PANEL_URL_PATH,
+    SETTINGS_FILENAME,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 _PATH_FLAG = f"{DOMAIN}_frontend_path"
 _MODULE_FLAG = f"{DOMAIN}_frontend_module"
+_PANEL_FLAG = f"{DOMAIN}_settings_panel"
 _MAX_RESOURCE_WAITS = 24
 
 
@@ -36,6 +44,18 @@ def card_module_url() -> str:
     """Return the URL Home Assistant should load as a frontend module."""
 
     return f"{card_resource_path()}?v={INTEGRATION_VERSION}"
+
+
+def settings_resource_path() -> str:
+    """Return the unversioned URL path of the settings panel module."""
+
+    return f"{FRONTEND_URL_BASE}/{SETTINGS_FILENAME}"
+
+
+def settings_module_url() -> str:
+    """Return the cache-busted settings panel module URL."""
+
+    return f"{settings_resource_path()}?v={INTEGRATION_VERSION}"
 
 
 def resource_url_path(url: str) -> str:
@@ -57,7 +77,7 @@ def www_path() -> Path:
 
 
 async def async_register_frontend(hass) -> None:
-    """Serve the card and register it with Lovelace. Safe to call more than once."""
+    """Serve frontend assets, Lovelace card, and settings panel. Safe to call more than once."""
 
     await _async_register_static_path(hass)
     if not hass.data.get(_PATH_FLAG):
@@ -65,6 +85,7 @@ async def async_register_frontend(hass) -> None:
             "DI.FM Radio static path is not ready yet; will keep retrying card registration"
         )
     await _async_register_card_module(hass)
+    await _async_register_settings_panel(hass)
 
 
 async def _async_register_static_path(hass) -> None:
@@ -78,6 +99,10 @@ async def _async_register_static_path(hass) -> None:
     if not card_file.is_file():
         _LOGGER.warning("DI.FM Radio card bundle is missing: %s", card_file)
         return
+    settings_file = path / SETTINGS_FILENAME
+    if not settings_file.is_file():
+        _LOGGER.warning("DI.FM Radio settings bundle is missing: %s", settings_file)
+        return
     try:
         from homeassistant.components.http import StaticPathConfig
 
@@ -90,7 +115,7 @@ async def _async_register_static_path(hass) -> None:
         _LOGGER.warning("Could not register DI.FM Radio static path: %s", err)
         return
     hass.data[_PATH_FLAG] = True
-    _LOGGER.info("Serving DI.FM Radio card from %s", FRONTEND_URL_BASE)
+    _LOGGER.info("Serving DI.FM Radio frontend from %s", FRONTEND_URL_BASE)
 
 
 async def _async_register_card_module(hass, attempt: int = 0) -> None:
@@ -226,3 +251,48 @@ def _register_extra_js_url(hass) -> None:
             card_module_url(),
             err,
         )
+
+
+async def _async_register_settings_panel(hass) -> None:
+    """Register the Configure / sidebar settings panel."""
+
+    if hass.data.get(_PANEL_FLAG):
+        return
+    if not hass.data.get(_PATH_FLAG):
+        return
+
+    try:
+        from homeassistant.components.frontend import async_register_built_in_panel
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Could not import frontend panel helpers: %s", err)
+        return
+
+    try:
+        async_register_built_in_panel(
+            hass,
+            component_name="custom",
+            sidebar_title="DI.FM Radio",
+            sidebar_icon="mdi:radio",
+            frontend_url_path=PANEL_URL_PATH,
+            config={
+                "_panel_custom": {
+                    "name": "difm-radio-settings",
+                    "embed_iframe": False,
+                    "trust_external": False,
+                    "js_url": settings_module_url(),
+                    "module_url": settings_module_url(),
+                }
+            },
+            require_admin=True,
+            config_panel_domain=DOMAIN,
+        )
+    except ValueError:
+        # Panel already registered (reload / reauth).
+        hass.data[_PANEL_FLAG] = True
+        return
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Could not register DI.FM Radio settings panel: %s", err)
+        return
+
+    hass.data[_PANEL_FLAG] = True
+    _LOGGER.info("Registered DI.FM Radio settings panel at /%s", PANEL_URL_PATH)

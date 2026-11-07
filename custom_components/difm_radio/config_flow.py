@@ -17,7 +17,6 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import (
-    CONF_ARTWORK_OVERRIDE,
     CONF_DEFAULT_MEDIA_PLAYER,
     CONF_FAVOURITES,
     CONF_LISTEN_KEY,
@@ -30,10 +29,8 @@ from .const import (
 )
 from .exceptions import CannotConnectError, InvalidListenKeyError, InvalidResponseError
 from .helpers import (
-    apply_artwork_overrides,
     build_station_options,
     merge_favourites,
-    parse_favourites,
     validate_media_player_entity,
 )
 from .models import Catalogue, Favourite
@@ -43,7 +40,6 @@ STEP_USER = "user"
 STEP_SERVICES = "services"
 STEP_FAVOURITES = "favourites"
 STEP_PLAYER = "player"
-STEP_ARTWORK = "artwork"
 
 
 def _quality_options() -> list[selector.SelectOptionDict]:
@@ -329,206 +325,17 @@ class DifmRadioConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class DifmRadioOptionsFlow(OptionsFlow):
-    """Change favourites, speaker, quality, and artwork overrides."""
-
-    def __init__(self) -> None:
-        self._catalogue: Catalogue | None = None
-        self._service_keys: list[str] = []
+    """Legacy options entry; favourites/speaker/quality live in the settings panel."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Show the options menu."""
+        """Point users at the custom settings panel without changing options."""
 
-        return self.async_show_menu(
+        if user_input is not None:
+            return self.async_create_entry(data=dict(self.config_entry.options))
+
+        return self.async_show_form(
             step_id="init",
-            menu_options={
-                "player": "Default speaker and quality",
-                "favourites": "Favourite stations",
-                "favourites_filter": "Filter services before editing favourites",
-                "artwork": "Station artwork",
-            },
+            data_schema=vol.Schema({}),
         )
-
-    async def async_step_player(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Update default speaker and stream quality."""
-
-        errors: dict[str, str] = {}
-        current = self.config_entry.options
-        if user_input is not None:
-            entity_id = str(user_input[CONF_DEFAULT_MEDIA_PLAYER])
-            quality = str(user_input.get(CONF_STREAM_QUALITY, DEFAULT_STREAM_QUALITY))
-            speaker_error = _validate_speaker(self.hass, entity_id)
-            if speaker_error:
-                errors["base"] = speaker_error
-            elif quality not in STREAM_QUALITIES:
-                errors["base"] = "invalid_quality"
-            else:
-                return self._save_options(
-                    {
-                        CONF_DEFAULT_MEDIA_PLAYER: entity_id,
-                        CONF_STREAM_QUALITY: quality,
-                    }
-                )
-
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_DEFAULT_MEDIA_PLAYER): selector.EntitySelector(
-                    selector.EntitySelectorConfig(domain=Platform.MEDIA_PLAYER)
-                ),
-                vol.Required(CONF_STREAM_QUALITY): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=_quality_options(),
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                ),
-            }
-        )
-        return self.async_show_form(
-            step_id=STEP_PLAYER,
-            data_schema=self.add_suggested_values_to_schema(schema, current),
-            errors=errors,
-        )
-
-    async def async_step_favourites_filter(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Filter favourite selection by service."""
-
-        catalogue = await self._async_catalogue()
-        if user_input is not None:
-            selected = [str(key) for key in user_input.get(CONF_SERVICE_FILTER, [])]
-            valid = {network.key for network in catalogue.networks}
-            self._service_keys = [key for key in selected if key in valid]
-            if not self._service_keys:
-                return self.async_show_form(
-                    step_id="favourites_filter",
-                    data_schema=self._service_schema(catalogue),
-                    errors={"base": "no_services"},
-                )
-            return await self.async_step_favourites()
-
-        return self.async_show_form(
-            step_id="favourites_filter",
-            data_schema=self._service_schema(catalogue),
-        )
-
-    async def async_step_favourites(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Add or remove favourites while preserving existing order."""
-
-        catalogue = await self._async_catalogue()
-        previous = parse_favourites(self.config_entry.options.get(CONF_FAVOURITES))
-        options = _station_select_options(catalogue, self._service_keys or None, previous)
-        if not options:
-            return self.async_abort(reason="no_stations")
-
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            selected_ids = [str(item) for item in user_input.get(CONF_FAVOURITES, [])]
-            merged = merge_favourites(previous, selected_ids, catalogue.stations)
-            if not merged:
-                errors["base"] = "no_favourites"
-            else:
-                return self._save_options(
-                    {CONF_FAVOURITES: [fav.as_dict() for fav in merged]}
-                )
-
-        default_ids = [fav.id for fav in previous]
-        return self.async_show_form(
-            step_id=STEP_FAVOURITES,
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_FAVOURITES, default=default_ids): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=options,
-                            multiple=True,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    )
-                }
-            ),
-            errors=errors,
-        )
-
-    async def async_step_artwork(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Set or clear a custom artwork URL for one favourite."""
-
-        favourites = parse_favourites(self.config_entry.options.get(CONF_FAVOURITES))
-        if not favourites:
-            return self.async_abort(reason="no_favourites")
-
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            station_id = str(user_input.get("station_id", ""))
-            raw_url = str(user_input.get(CONF_ARTWORK_OVERRIDE, "")).strip()
-            if station_id not in {fav.id for fav in favourites}:
-                errors["base"] = "unknown_station"
-            else:
-                updated = apply_artwork_overrides(
-                    favourites, {station_id: raw_url or None}
-                )
-                return self._save_options(
-                    {CONF_FAVOURITES: [fav.as_dict() for fav in updated]}
-                )
-
-        station_options = [
-            selector.SelectOptionDict(value=fav.id, label=f"{fav.name} ({fav.network})")
-            for fav in favourites
-        ]
-        return self.async_show_form(
-            step_id=STEP_ARTWORK,
-            data_schema=vol.Schema(
-                {
-                    vol.Required("station_id"): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=station_options,
-                            mode=selector.SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                    vol.Optional(CONF_ARTWORK_OVERRIDE, default=""): selector.TextSelector(
-                        selector.TextSelectorConfig(type=selector.TextSelectorType.URL)
-                    ),
-                }
-            ),
-            errors=errors,
-        )
-
-    def _service_schema(self, catalogue: Catalogue) -> vol.Schema:
-        defaults = [network.key for network in catalogue.networks]
-        return vol.Schema(
-            {
-                vol.Required(CONF_SERVICE_FILTER, default=defaults): selector.SelectSelector(
-                    selector.SelectSelectorConfig(
-                        options=_service_options(catalogue),
-                        multiple=True,
-                        mode=selector.SelectSelectorMode.DROPDOWN,
-                    )
-                )
-            }
-        )
-
-    def _save_options(self, updates: dict[str, Any]) -> ConfigFlowResult:
-        options = dict(self.config_entry.options)
-        options.update(updates)
-        return self.async_create_entry(data=options)
-
-    async def _async_catalogue(self) -> Catalogue:
-        if self._catalogue is not None:
-            return self._catalogue
-        runtime = getattr(self.config_entry, "runtime_data", None)
-        if runtime is not None:
-            coordinator = getattr(runtime, "coordinator", runtime)
-            data = getattr(coordinator, "data", None)
-            if data is not None:
-                self._catalogue = data
-                return self._catalogue
-        listen_key = str(self.config_entry.data.get(CONF_LISTEN_KEY, "")).strip()
-        client = AudioAddictClient(async_get_clientsession(self.hass), listen_key)
-        self._catalogue = await client.async_get_catalogue()
-        return self._catalogue
