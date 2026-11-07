@@ -76,6 +76,12 @@ Open **DI.FM Radio** in the sidebar, or use **Configure** on the integration. Th
 - Manage **favourite stations** as artwork tiles (minus to remove)
 - **Add favourite station**: pick a radio service, click available artwork to select, remove from the selected grid with minus
 
+![DI.FM Radio configuration panel](screenshots/configuration.png)
+
+**Add favourite station** opens a dialog with a radio-service dropdown and two artwork grids — available stations on the left, selected favourites on the right:
+
+![Add favourite stations dialog](screenshots/favorite.png)
+
 Favourite and options edits do not reload the config entry, so an owned stream is not torn down.
 
 Stream quality (official Premium copy):
@@ -104,9 +110,9 @@ The card layout is:
 2. Favourite stations as artwork icons
 3. Large artwork for the selected station, with play, stop, and volume
 
-Do not add the generic media-player tiles (title only, playback controls, volume slider). Those are Home Assistant's built-in cards. The logical player also exposes **Browse media**.
+![DI.FM favourite stations Lovelace card](screenshots/lovelace_card.png)
 
-Mockup: [docs/screenshots/card-mockup.svg](docs/screenshots/card-mockup.svg)
+Do not add the generic media-player tiles (title only, playback controls, volume slider). Those are Home Assistant's built-in cards. The logical player also exposes **Browse media**.
 
 ```yaml
 type: custom:difm-radio-card
