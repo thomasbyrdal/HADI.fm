@@ -1,7 +1,7 @@
 import { DifmRadioSettings } from "./settings";
 import { SETTINGS_ELEMENT } from "./settings-types";
 
-const SETTINGS_VERSION = "0.2.3";
+const SETTINGS_VERSION = "0.2.4";
 
 if (!customElements.get(SETTINGS_ELEMENT)) {
   customElements.define(SETTINGS_ELEMENT, DifmRadioSettings);

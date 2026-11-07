@@ -22,7 +22,11 @@ def test_hacs_and_manifest_required_fields() -> None:
     assert (INTEGRATION / "brand" / "icon.png").is_file()
     assert (INTEGRATION / "brand" / "icon.png").stat().st_size > 10_000
     assert (INTEGRATION / "brand" / "icon@2x.png").is_file()
+    assert not (INTEGRATION / "brand" / "logo.png").exists()
+    assert not (INTEGRATION / "brand" / "logo@2x.png").exists()
     assert manifest.get("icon") == "mdi:radio"
+    assert "media_entertainment.music_radio_services" in manifest.get("categories", [])
+    assert "media_entertainment.speakers_audio" in manifest.get("categories", [])
     assert (INTEGRATION / "www" / "difm-radio-card.js").is_file()
     assert (INTEGRATION / "services.yaml").is_file()
     assert (INTEGRATION / "translations" / "en.json").is_file()

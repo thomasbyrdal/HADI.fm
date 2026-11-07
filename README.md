@@ -6,6 +6,9 @@ Custom integration and Lovelace card for DI.FM and the sister AudioAddict servic
 
 Minimum Home Assistant version: **2025.1.0**.
 
+[![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=thomasbyrdal&repository=HADI.fm&category=integration)
+[![Open your Home Assistant instance and start setting up a new integration.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=difm_radio)
+
 ## Features
 
 - Plays DI.FM and sister-service stations on a Home Assistant speaker

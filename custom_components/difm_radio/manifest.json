@@ -2,6 +2,10 @@
   "domain": "difm_radio",
   "name": "DI.FM Radio",
   "after_dependencies": ["frontend", "lovelace"],
+  "categories": [
+    "media_entertainment.music_radio_services",
+    "media_entertainment.speakers_audio"
+  ],
   "codeowners": ["@thomasbyrdal"],
   "config_flow": true,
   "dependencies": ["http", "frontend", "lovelace"],
@@ -13,5 +17,5 @@
   "loggers": ["custom_components.difm_radio"],
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.2.3"
+  "version": "0.2.4"
 }

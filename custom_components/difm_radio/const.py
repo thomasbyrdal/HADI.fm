@@ -64,6 +64,6 @@ FRONTEND_URL_BASE: Final = "/difm_radio"
 CARD_FILENAME: Final = "difm-radio-card.js"
 SETTINGS_FILENAME: Final = "difm-radio-settings.js"
 PANEL_URL_PATH: Final = "difm-radio-settings"
-INTEGRATION_VERSION: Final = "0.2.3"
+INTEGRATION_VERSION: Final = "0.2.4"
 
 TO_REDACT: Final = {CONF_LISTEN_KEY, "listen_key"}

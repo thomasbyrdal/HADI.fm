@@ -2,7 +2,7 @@ import { DifmRadioCard } from "./card";
 import { DifmRadioCardEditor } from "./editor";
 import { entitySuggestion } from "./model";
 
-const CARD_VERSION = "0.2.3";
+const CARD_VERSION = "0.2.4";
 
 if (!customElements.get("difm-radio-card")) {
   customElements.define("difm-radio-card", DifmRadioCard);

@@ -1286,7 +1286,7 @@ function escapeAttr2(value) {
 }
 
 // src/register.ts
-var CARD_VERSION = "0.2.3";
+var CARD_VERSION = "0.2.4";
 if (!customElements.get("difm-radio-card")) {
   customElements.define("difm-radio-card", DifmRadioCard);
 }
