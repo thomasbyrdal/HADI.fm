@@ -2,9 +2,22 @@
 
 Custom integration and Lovelace card for DI.FM and the sister AudioAddict services. It stores a listen key in the config entry, loads the live station catalogue, remembers favourites, and plays a resolved Icecast URL on a Home Assistant speaker through a logical `media_player`.
 
-**Speaker audio has not been verified on a physical target player.** Stream URL resolution and Icecast `200 audio/mpeg` were verified with a real listen key. Do not treat a dashboard tap as confirmed audio until you hear it on your speaker.
+**Speaker audio has been verified on real Home Assistant media players** with a Premium listen key and Icecast streams (`200 audio/mpeg`).
 
 Minimum Home Assistant version: **2025.1.0**.
+
+## Features
+
+- Plays DI.FM and sister-service stations on a Home Assistant speaker
+- Logical `media_player.di_fm_radio` plus a dedicated favourites sensor for the dashboard card
+- Lovelace card with speaker picker, favourite artwork tiles, now playing, and volume
+- Settings panel (sidebar **DI.FM Radio**, also opened from **Configure**) for:
+  - Default speaker and stream quality
+  - Listen key view / edit / clear
+  - Favourite stations as a scrollable **5-wide** artwork grid
+  - **Add favourite station** dialog with radio-service dropdown and dual available/selected grids
+- Services for play, stop, catalogue refresh, and favourite toggles
+- Long-session stability: speaker metadata ticks ignored, favourites off the hot path, soft catalogue failures
 
 ## Supported radio services
 
@@ -43,7 +56,7 @@ See [docs/releasing.md](docs/releasing.md) for GitHub release notes.
 ## Manual / clean install
 
 1. Copy `custom_components/difm_radio` into `<config>/custom_components/difm_radio` so that `manifest.json` is at `<config>/custom_components/difm_radio/manifest.json`.
-2. Confirm `www/difm-radio-card.js` is in that folder.
+2. Confirm `www/difm-radio-card.js` and `www/difm-radio-settings.js` are in that folder.
 3. Restart Home Assistant.
 4. Add the integration from the UI.
 
@@ -54,7 +67,16 @@ See [docs/releasing.md](docs/releasing.md) for GitHub release notes.
 3. Select favourites. Search the dropdown. Order is kept when you edit later.
 4. Choose a default `media_player` and a stream quality.
 
-Options later: **Configure** on the integration (or the **DI.FM Radio** sidebar panel). The settings panel shows the **default speaker**, **stream quality**, and favourite stations as a scrollable 5-wide artwork grid. Use **Add favourite station** to pick stations by radio service. Favourite edits do not reload the entry, so an owned stream is not torn down.
+## Settings panel
+
+Open **DI.FM Radio** in the sidebar, or use **Configure** on the integration. The panel lets you:
+
+- Change the **default speaker** and **stream quality**
+- View, replace, or clear the **listen key** (Save only when something changed)
+- Manage **favourite stations** as artwork tiles (minus to remove)
+- **Add favourite station**: pick a radio service, click available artwork to select, remove from the selected grid with minus
+
+Favourite and options edits do not reload the config entry, so an owned stream is not torn down.
 
 Stream quality (official Premium copy):
 
@@ -97,7 +119,7 @@ entity: media_player.di_fm_radio
 # show_volume: true
 ```
 
-Favourites come from the integration entity. The card never stores the listen key.
+Favourites come from the integration entity / favourites sensor. The card never stores the listen key.
 
 If the picker does not list the card, add a Lovelace resource of type **module**: `/difm_radio/difm-radio-card.js`
 
@@ -119,15 +141,15 @@ The logical `media_player.di_fm_radio` also accepts `play_media` with a station 
 - The integration does not probe Icecast itself; that would consume the only allowed stream.
 - Now-playing track metadata is not implemented.
 - Remote `favorites.pls` is not imported; favourites are local.
-- Speaker audio through Home Assistant `play_media` is **unverified**.
+- Some speakers or firmware may still refuse certain AAC qualities; prefer `premium_high` (MP3 320) if playback fails.
 
 ## Verified vs unverified
 
 See [docs/api-research.md](docs/api-research.md).
 
-Verified: public catalogue, official artwork, listen-key validation, `/listen` URL lists with the bare-key query, Icecast `200 audio/mpeg`, same key on JazzRadio.
+Verified: public catalogue, official artwork, listen-key validation, `/listen` URL lists with the bare-key query, Icecast `200 audio/mpeg`, same key on JazzRadio, **audio on real Home Assistant speakers**.
 
-Unverified: audio from a Home Assistant speaker, stream expiry, and every speaker firmware accepting the Icecast URL.
+Unverified: stream expiry behaviour across every CDN mirror, and every speaker firmware accepting every quality key.
 
 ## Troubleshooting
 
@@ -151,16 +173,15 @@ npm run build
 
 CI does not use a real listen key. Config-flow tests in `tests/test_config_flow.py` run only when `homeassistant` is installed.
 
-## Still requires real hardware, a listen key, or a login
+## Still requires a listen key or a login
 
-These were not completed automatically:
+These were not completed automatically in this repository:
 
 | Item | Why |
 | --- | --- |
-| Copy onto `http://homeassistant.local:8123/` | The UI loaded (192.168.1.216) and asked for a username and password. No credentials were used. |
-| Hear audio on a speaker | Needs that Home Assistant login plus a speaker that accepts Icecast `play_media` |
+| Copy onto a private Home Assistant instance | Needs local credentials; not stored in this repo |
 | Type a listen key in the UI | The key must be entered locally; it is not stored in this repo |
-| HACS store listing | Needs a public GitHub repository and a release |
+| HACS default store listing | Needs the public GitHub repository and releases (custom repository works today) |
 
 ## Report issues
 
