@@ -5,8 +5,6 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from homeassistant.helpers import config_validation as cv
-
 from .const import CONF_LISTEN_KEY, DOMAIN
 
 if TYPE_CHECKING:
@@ -19,7 +17,15 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+try:
+    from homeassistant.helpers import config_validation as cv
+except ImportError:  # pragma: no cover - unit tests without Home Assistant installed
+    cv = None
+
+# Top-level assignment satisfies hassfest; real schema applies when HA is installed.
+CONFIG_SCHEMA = (
+    cv.config_entry_only_config_schema(DOMAIN) if cv is not None else {}
+)
 
 __all__ = [
     "CONFIG_SCHEMA",
