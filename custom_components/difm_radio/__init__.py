@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from homeassistant.helpers import config_validation as cv
+
 from .const import CONF_LISTEN_KEY, DOMAIN
 
 if TYPE_CHECKING:
@@ -17,7 +19,10 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
 __all__ = [
+    "CONFIG_SCHEMA",
     "DOMAIN",
     "async_reload_entry",
     "async_setup",

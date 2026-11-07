@@ -10,7 +10,6 @@
   "config_flow": true,
   "dependencies": ["http", "frontend", "lovelace"],
   "documentation": "https://github.com/thomasbyrdal/HADI.fm",
-  "icon": "mdi:radio",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/thomasbyrdal/HADI.fm/issues",

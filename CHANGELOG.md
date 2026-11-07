@@ -3,6 +3,7 @@
 ## 0.2.4 — 2026-11-07
 
 - Prepare Marketplace catalog readiness: topics, My badges, brand icons, manifest categories, hassfest/HACS validation workflows
+- Pass hassfest by dropping invalid manifest `icon` and declaring config-entry-only `CONFIG_SCHEMA`
 
 ## 0.2.3 — 2026-11-07
 
