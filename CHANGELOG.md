@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.2 — 2026-11-07
+
+- Fix settings panel flicker caused by rebuilding the DOM on every panel reattach
+- Show the listen key reliably with explicit text contrast and property-based value binding
+- Surface real websocket error messages instead of `[object Object]` when Save fails
+
 ## 0.2.1 — 2026-11-07
 
 - Stop settings-panel flicker from Home Assistant state updates so artwork can finish loading

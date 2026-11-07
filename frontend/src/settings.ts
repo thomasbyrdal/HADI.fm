@@ -26,11 +26,38 @@ function sameIds(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
 
+function formatError(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message || err.name;
+  }
+  if (typeof err === "string") {
+    return err;
+  }
+  if (err && typeof err === "object") {
+    const record = err as Record<string, unknown>;
+    if (typeof record.message === "string" && record.message.trim()) {
+      return typeof record.code === "string"
+        ? `${record.message} (${record.code})`
+        : record.message;
+    }
+    if (typeof record.error === "string") {
+      return record.error;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return "Unknown error";
+    }
+  }
+  return String(err);
+}
+
 export class DifmRadioSettings extends HTMLElement {
   private _hass: HomeAssistant | null = null;
   private _loaded = false;
   private _loading = false;
   private _saving = false;
+  private _loadToken = 0;
   private _error: string | null = null;
   private _status: string | null = null;
   private _config: SettingsConfig | null = null;
@@ -49,8 +76,7 @@ export class DifmRadioSettings extends HTMLElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
-    // Home Assistant pushes hass on every state change; do not rebuild the DOM
-    // or artwork loads are aborted and the panel flickers.
+    // Home Assistant pushes hass on every state change; never rebuild the DOM here.
     if (!this._loaded && !this._loading) {
       void this._load();
     }
@@ -73,18 +99,17 @@ export class DifmRadioSettings extends HTMLElement {
     }
     if (this._hass && !this._loaded && !this._loading) {
       void this._load();
-    } else if (this._loaded) {
+      return;
+    }
+    // HA may detach/reattach the panel on state updates. Only rebuild if the
+    // DOM was actually wiped — a full redraw here caused the 1–2s flicker.
+    if (this._loaded && !this.querySelector(".shell")) {
       this._render();
     }
   }
 
   disconnectedCallback(): void {
-    if (this._bound) {
-      this.removeEventListener("click", this._onClick);
-      this.removeEventListener("change", this._onChange);
-      this.removeEventListener("input", this._onInput);
-      this._bound = false;
-    }
+    // Keep listeners and in-memory state across brief HA reparenting.
   }
 
   private _isDirty(): boolean {
@@ -271,26 +296,35 @@ export class DifmRadioSettings extends HTMLElement {
     if (!this._hass || this._loading) {
       return;
     }
+    const token = ++this._loadToken;
     this._loading = true;
     this._error = null;
     this._status = null;
     this._render();
     try {
       const data = await this._hass.callWS<SettingsConfig>({ type: WS_GET_CONFIG });
+      if (token !== this._loadToken) {
+        return;
+      }
       this._config = data;
       this._speaker = data.default_media_player || data.media_players[0]?.entity_id || "";
       this._quality = data.stream_quality || data.qualities[0]?.value || "";
-      this._listenKey = data.listen_key ?? "";
-      this._favouriteIds = data.favourites.map((item) => item.id);
+      this._listenKey = typeof data.listen_key === "string" ? data.listen_key : "";
+      this._favouriteIds = data.favourites.map((item) => String(item.id));
       this._networkKey = data.networks[0]?.key || data.stations[0]?.network || "";
       this._captureBaseline();
       this._loaded = true;
       this._prefetchKnownArtwork();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : String(err);
+      if (token !== this._loadToken) {
+        return;
+      }
+      this._error = formatError(err);
     } finally {
-      this._loading = false;
-      this._render();
+      if (token === this._loadToken) {
+        this._loading = false;
+        this._render();
+      }
     }
   }
 
@@ -298,10 +332,21 @@ export class DifmRadioSettings extends HTMLElement {
     if (!this._hass || this._saving) {
       return;
     }
+    // Prefer the live input value in case a redraw raced with typing.
+    const liveKey = this.querySelector<HTMLInputElement>("input[name='listen_key']");
+    if (liveKey) {
+      this._listenKey = liveKey.value;
+    }
     if (!this._isDirty()) {
       this._status = "No changes to save.";
       this._error = null;
-      this._render();
+      this._syncSaveButton();
+      const status = this.querySelector(".status");
+      if (status) {
+        status.textContent = this._status;
+      } else {
+        this._render();
+      }
       return;
     }
     if (!this._speaker) {
@@ -329,7 +374,7 @@ export class DifmRadioSettings extends HTMLElement {
         default_media_player: this._speaker,
         stream_quality: this._quality,
         listen_key: this._listenKey,
-        favourites: this._favouriteIds,
+        favourites: this._favouriteIds.map(String),
       });
       if (this._config) {
         this._config = {
@@ -342,12 +387,12 @@ export class DifmRadioSettings extends HTMLElement {
       }
       this._speaker = result.default_media_player;
       this._quality = result.stream_quality;
-      this._listenKey = result.listen_key;
-      this._favouriteIds = result.favourites.map((item) => item.id);
+      this._listenKey = typeof result.listen_key === "string" ? result.listen_key : "";
+      this._favouriteIds = result.favourites.map((item) => String(item.id));
       this._captureBaseline();
       this._status = "Settings saved.";
     } catch (err) {
-      this._error = err instanceof Error ? err.message : String(err);
+      this._error = formatError(err);
     } finally {
       this._saving = false;
       this._render();
@@ -496,7 +541,6 @@ export class DifmRadioSettings extends HTMLElement {
                   type="text"
                   autocomplete="off"
                   spellcheck="false"
-                  value="${escapeHtml(this._listenKey)}"
                   aria-label="Listen key"
                 />
                 <p class="field-hint">From Player Settings on any AudioAddict network site. Clear and save to remove the stored key.</p>
@@ -521,6 +565,11 @@ export class DifmRadioSettings extends HTMLElement {
       </div>
       ${this._addOpen ? this._renderAddDialog(networks) : ""}
     `;
+    const listenInput = this.querySelector<HTMLInputElement>("input[name='listen_key']");
+    if (listenInput) {
+      // Set via property so values are never lost to attribute escaping/theme quirks.
+      listenInput.value = this._listenKey;
+    }
     this._hydrateArtwork();
   }
 

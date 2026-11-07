@@ -77,7 +77,6 @@ export const SETTINGS_STYLES = `
   border-radius: 8px;
   padding: 10px 12px;
   font: inherit;
-  color: inherit;
 }
 .field select {
   appearance: none;
@@ -89,7 +88,8 @@ export const SETTINGS_STYLES = `
   background-repeat: no-repeat;
   background-position: right 10px center;
   background-size: 22px;
-  color: var(--text-primary-color, #fff);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
   padding-right: 40px;
   font-weight: 500;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
@@ -102,8 +102,11 @@ export const SETTINGS_STYLES = `
   outline-offset: 2px;
 }
 .field input[type="text"] {
-  border: 1px solid var(--divider-color, #e0e0e0);
+  border: 1px solid var(--divider-color, #9e9e9e);
   background: var(--card-background-color, #fff);
+  color: var(--primary-text-color, #212121);
+  -webkit-text-fill-color: var(--primary-text-color, #212121);
+  caret-color: var(--primary-text-color, #212121);
 }
 .field input[type="text"]:focus-visible {
   outline: 2px solid var(--primary-color, #03a9f4);

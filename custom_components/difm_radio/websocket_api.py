@@ -167,6 +167,17 @@ async def ws_set_config(
 ) -> None:
     """Persist speaker, quality, favourites, and listen key from the settings panel."""
 
+    try:
+        await _async_ws_set_config(hass, connection, msg)
+    except Exception as err:  # noqa: BLE001
+        connection.send_error(msg["id"], "unknown_error", str(err) or err.__class__.__name__)
+
+
+async def _async_ws_set_config(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
     entry, runtime = _entry_runtime(hass)
     if entry is None or runtime is None:
         connection.send_error(msg["id"], "not_configured", "DI.FM Radio is not configured")

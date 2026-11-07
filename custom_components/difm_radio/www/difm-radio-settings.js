@@ -126,7 +126,6 @@ var SETTINGS_STYLES = `
   border-radius: 8px;
   padding: 10px 12px;
   font: inherit;
-  color: inherit;
 }
 .field select {
   appearance: none;
@@ -138,7 +137,8 @@ var SETTINGS_STYLES = `
   background-repeat: no-repeat;
   background-position: right 10px center;
   background-size: 22px;
-  color: var(--text-primary-color, #fff);
+  color: #fff;
+  -webkit-text-fill-color: #fff;
   padding-right: 40px;
   font-weight: 500;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
@@ -151,8 +151,11 @@ var SETTINGS_STYLES = `
   outline-offset: 2px;
 }
 .field input[type="text"] {
-  border: 1px solid var(--divider-color, #e0e0e0);
+  border: 1px solid var(--divider-color, #9e9e9e);
   background: var(--card-background-color, #fff);
+  color: var(--primary-text-color, #212121);
+  -webkit-text-fill-color: var(--primary-text-color, #212121);
+  caret-color: var(--primary-text-color, #212121);
 }
 .field input[type="text"]:focus-visible {
   outline: 2px solid var(--primary-color, #03a9f4);
@@ -383,11 +386,35 @@ function stationById(stations, id) {
 function sameIds(a, b) {
   return a.length === b.length && a.every((value, index) => value === b[index]);
 }
+function formatError(err) {
+  if (err instanceof Error) {
+    return err.message || err.name;
+  }
+  if (typeof err === "string") {
+    return err;
+  }
+  if (err && typeof err === "object") {
+    const record = err;
+    if (typeof record.message === "string" && record.message.trim()) {
+      return typeof record.code === "string" ? `${record.message} (${record.code})` : record.message;
+    }
+    if (typeof record.error === "string") {
+      return record.error;
+    }
+    try {
+      return JSON.stringify(err);
+    } catch {
+      return "Unknown error";
+    }
+  }
+  return String(err);
+}
 var DifmRadioSettings = class extends HTMLElement {
   _hass = null;
   _loaded = false;
   _loading = false;
   _saving = false;
+  _loadToken = 0;
   _error = null;
   _status = null;
   _config = null;
@@ -422,17 +449,13 @@ var DifmRadioSettings = class extends HTMLElement {
     }
     if (this._hass && !this._loaded && !this._loading) {
       void this._load();
-    } else if (this._loaded) {
+      return;
+    }
+    if (this._loaded && !this.querySelector(".shell")) {
       this._render();
     }
   }
   disconnectedCallback() {
-    if (this._bound) {
-      this.removeEventListener("click", this._onClick);
-      this.removeEventListener("change", this._onChange);
-      this.removeEventListener("input", this._onInput);
-      this._bound = false;
-    }
   }
   _isDirty() {
     return this._speaker !== this._baselineSpeaker || this._quality !== this._baselineQuality || this._listenKey !== this._baselineListenKey || !sameIds(this._favouriteIds, this._baselineFavouriteIds);
@@ -590,36 +613,55 @@ var DifmRadioSettings = class extends HTMLElement {
     if (!this._hass || this._loading) {
       return;
     }
+    const token = ++this._loadToken;
     this._loading = true;
     this._error = null;
     this._status = null;
     this._render();
     try {
       const data = await this._hass.callWS({ type: WS_GET_CONFIG });
+      if (token !== this._loadToken) {
+        return;
+      }
       this._config = data;
       this._speaker = data.default_media_player || data.media_players[0]?.entity_id || "";
       this._quality = data.stream_quality || data.qualities[0]?.value || "";
-      this._listenKey = data.listen_key ?? "";
-      this._favouriteIds = data.favourites.map((item) => item.id);
+      this._listenKey = typeof data.listen_key === "string" ? data.listen_key : "";
+      this._favouriteIds = data.favourites.map((item) => String(item.id));
       this._networkKey = data.networks[0]?.key || data.stations[0]?.network || "";
       this._captureBaseline();
       this._loaded = true;
       this._prefetchKnownArtwork();
     } catch (err) {
-      this._error = err instanceof Error ? err.message : String(err);
+      if (token !== this._loadToken) {
+        return;
+      }
+      this._error = formatError(err);
     } finally {
-      this._loading = false;
-      this._render();
+      if (token === this._loadToken) {
+        this._loading = false;
+        this._render();
+      }
     }
   }
   async _save() {
     if (!this._hass || this._saving) {
       return;
     }
+    const liveKey = this.querySelector("input[name='listen_key']");
+    if (liveKey) {
+      this._listenKey = liveKey.value;
+    }
     if (!this._isDirty()) {
       this._status = "No changes to save.";
       this._error = null;
-      this._render();
+      this._syncSaveButton();
+      const status = this.querySelector(".status");
+      if (status) {
+        status.textContent = this._status;
+      } else {
+        this._render();
+      }
       return;
     }
     if (!this._speaker) {
@@ -642,7 +684,7 @@ var DifmRadioSettings = class extends HTMLElement {
         default_media_player: this._speaker,
         stream_quality: this._quality,
         listen_key: this._listenKey,
-        favourites: this._favouriteIds
+        favourites: this._favouriteIds.map(String)
       });
       if (this._config) {
         this._config = {
@@ -655,12 +697,12 @@ var DifmRadioSettings = class extends HTMLElement {
       }
       this._speaker = result.default_media_player;
       this._quality = result.stream_quality;
-      this._listenKey = result.listen_key;
-      this._favouriteIds = result.favourites.map((item) => item.id);
+      this._listenKey = typeof result.listen_key === "string" ? result.listen_key : "";
+      this._favouriteIds = result.favourites.map((item) => String(item.id));
       this._captureBaseline();
       this._status = "Settings saved.";
     } catch (err) {
-      this._error = err instanceof Error ? err.message : String(err);
+      this._error = formatError(err);
     } finally {
       this._saving = false;
       this._render();
@@ -769,7 +811,6 @@ var DifmRadioSettings = class extends HTMLElement {
                   type="text"
                   autocomplete="off"
                   spellcheck="false"
-                  value="${escapeHtml(this._listenKey)}"
                   aria-label="Listen key"
                 />
                 <p class="field-hint">From Player Settings on any AudioAddict network site. Clear and save to remove the stored key.</p>
@@ -791,6 +832,10 @@ var DifmRadioSettings = class extends HTMLElement {
       </div>
       ${this._addOpen ? this._renderAddDialog(networks) : ""}
     `;
+    const listenInput = this.querySelector("input[name='listen_key']");
+    if (listenInput) {
+      listenInput.value = this._listenKey;
+    }
     this._hydrateArtwork();
   }
   _renderAddDialog(networks) {
@@ -840,7 +885,7 @@ var DifmRadioSettings = class extends HTMLElement {
 };
 
 // src/settings-register.ts
-var SETTINGS_VERSION = "0.2.1";
+var SETTINGS_VERSION = "0.2.2";
 if (!customElements.get(SETTINGS_ELEMENT)) {
   customElements.define(SETTINGS_ELEMENT, DifmRadioSettings);
 }

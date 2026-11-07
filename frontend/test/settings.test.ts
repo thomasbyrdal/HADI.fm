@@ -128,7 +128,7 @@ describe("difm-radio-settings", () => {
     });
   });
 
-  it("does not redraw the DOM on every hass update", async () => {
+  it("does not redraw the DOM on every hass update or reattach", async () => {
     const callWS = vi.fn().mockResolvedValue(configPayload());
     const el = document.createElement(SETTINGS_ELEMENT) as DifmRadioSettings;
     document.body.appendChild(el);
@@ -139,9 +139,42 @@ describe("difm-radio-settings", () => {
     });
 
     const tile = el.querySelector(".grid .tile");
+    const listen = el.querySelector("input[name='listen_key']") as HTMLInputElement;
+    expect(listen.value).toBe("stored-listen-key");
+
     el.hass = { states: { "sensor.tick": { entity_id: "sensor.tick", state: "1", attributes: {} } }, callWS };
+    el.disconnectedCallback();
+    el.connectedCallback();
     el.hass = { states: { "sensor.tick": { entity_id: "sensor.tick", state: "2", attributes: {} } }, callWS };
+
     expect(el.querySelector(".grid .tile")).toBe(tile);
+    expect((el.querySelector("input[name='listen_key']") as HTMLInputElement).value).toBe(
+      "stored-listen-key",
+    );
     expect(callWS).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows websocket error messages instead of [object Object]", async () => {
+    const callWS = vi
+      .fn()
+      .mockResolvedValueOnce(configPayload())
+      .mockRejectedValueOnce({ code: "invalid_auth", message: "The listen key was rejected" });
+    const el = document.createElement(SETTINGS_ELEMENT) as DifmRadioSettings;
+    document.body.appendChild(el);
+    el.hass = { states: {}, callWS };
+
+    await vi.waitFor(() => {
+      expect(el.querySelector("input[name='listen_key']")).toBeTruthy();
+    });
+
+    const listenKey = el.querySelector("input[name='listen_key']") as HTMLInputElement;
+    listenKey.value = "bad-key";
+    listenKey.dispatchEvent(new Event("input", { bubbles: true }));
+    (el.querySelector("[data-action='save']") as HTMLButtonElement).click();
+
+    await vi.waitFor(() => {
+      expect(el.querySelector(".error")?.textContent).toContain("The listen key was rejected");
+    });
+    expect(el.querySelector(".error")?.textContent).not.toContain("[object Object]");
   });
 });
