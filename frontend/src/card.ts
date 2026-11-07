@@ -266,19 +266,28 @@ export class DifmRadioCard extends HTMLElement {
     }
     select.hidden = false;
     empty.hidden = true;
-    const nextKey = speakerIds(view.speakers);
+    const selected =
+      (view.speakerEntityId &&
+      view.speakers.some((speaker) => speaker.id === view.speakerEntityId)
+        ? view.speakerEntityId
+        : "") ||
+      view.speakers[0]?.id ||
+      "";
+    const nextKey = `${speakerIds(view.speakers)}::${selected}`;
     if (nextKey !== this._speakerKey) {
       const options = document.createDocumentFragment();
       for (const speaker of view.speakers) {
         const option = document.createElement("option");
         option.value = speaker.id;
         option.textContent = speaker.name;
+        if (speaker.id === selected) {
+          option.selected = true;
+        }
         options.append(option);
       }
       select.replaceChildren(options);
       this._speakerKey = nextKey;
     }
-    const selected = view.speakerEntityId || view.speakers[0]?.id || "";
     if (selected && select.value !== selected) {
       select.value = selected;
     }

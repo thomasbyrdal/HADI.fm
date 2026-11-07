@@ -10,14 +10,19 @@ from custom_components.difm_radio.frontend import (
 )
 
 
-def test_card_bundle_is_packaged_and_has_no_listen_key() -> None:
-    path = www_path() / "difm-radio-card.js"
-    assert path.is_file()
-    source = path.read_text(encoding="utf-8")
-    assert "custom:difm-radio-card" in source
-    assert "play_station" in source
-    assert "difm_radio" in source
-    assert "listen_key=REDACTED" in source or "listen_key=" not in source
+def test_card_loader_and_bundle_are_packaged() -> None:
+    loader = www_path() / "difm-radio-card.js"
+    bundle = www_path() / "difm-radio-card.bundle.js"
+    assert loader.is_file()
+    assert bundle.is_file()
+    loader_source = loader.read_text(encoding="utf-8")
+    bundle_source = bundle.read_text(encoding="utf-8")
+    assert "difm-radio-card.bundle.js" in loader_source
+    assert "home-assistant" in loader_source
+    assert "custom:difm-radio-card" in bundle_source
+    assert "play_station" in bundle_source
+    assert "difm_radio" in bundle_source
+    assert "listen_key=REDACTED" in bundle_source or "listen_key=" not in bundle_source
 
 
 def test_card_module_url_is_versioned() -> None:
@@ -26,3 +31,4 @@ def test_card_module_url_is_versioned() -> None:
     assert is_our_card_resource("/difm_radio/difm-radio-card.js?v=0.1.4")
     assert not is_our_card_resource("/local/community/di-fm-player-card.js")
     assert not is_our_card_resource("/www/di-fm-player-card.js")
+    assert not is_our_card_resource("/difm_radio/difm-radio-card.bundle.js")

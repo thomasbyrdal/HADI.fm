@@ -293,7 +293,12 @@ export function deriveView(hass: HomeAssistant | null | undefined, config: Norma
   const selected = selectedFavourite(favourites, stationId);
   const speakerEntityId =
     config.media_player ||
-    (typeof attrs.speaker_entity_id === "string" ? attrs.speaker_entity_id : null);
+    (typeof attrs.speaker_entity_id === "string" && attrs.speaker_entity_id
+      ? attrs.speaker_entity_id
+      : null) ||
+    (typeof attrs.default_media_player === "string" && attrs.default_media_player
+      ? attrs.default_media_player
+      : null);
   return {
     entityId,
     available: entity.state !== "unavailable" && entity.state !== "unknown",

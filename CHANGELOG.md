@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.5 — 2026-11-07
+
+- Load the Lovelace card through a tiny registry-safe loader to avoid intermittent Configuration errors after restart
+- Pre-select the configured / default speaker in the card dropdown on load
+
 ## 0.2.4 — 2026-11-07
 
 - Prepare Marketplace catalog readiness: topics, My badges, brand icons, manifest categories, hassfest/HACS validation workflows

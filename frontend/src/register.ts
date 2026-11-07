@@ -1,23 +1,24 @@
 import { DifmRadioCard } from "./card";
+import { defineCardElement, ensureDefinedAfterFrontend } from "./define";
 import { DifmRadioCardEditor } from "./editor";
 import { entitySuggestion } from "./model";
 
-const CARD_VERSION = "0.2.4";
+const CARD_VERSION = "0.2.5";
+const CARD_TAG = "difm-radio-card";
+const EDITOR_TAG = "difm-radio-card-editor";
 
-if (!customElements.get("difm-radio-card")) {
-  customElements.define("difm-radio-card", DifmRadioCard);
-}
-if (!customElements.get("difm-radio-card-editor")) {
-  customElements.define("difm-radio-card-editor", DifmRadioCardEditor);
-}
+defineCardElement(CARD_TAG, DifmRadioCard);
+defineCardElement(EDITOR_TAG, DifmRadioCardEditor);
+ensureDefinedAfterFrontend(CARD_TAG, DifmRadioCard);
+ensureDefinedAfterFrontend(EDITOR_TAG, DifmRadioCardEditor);
 
 const win = window as Window & {
   customCards?: Array<Record<string, unknown>>;
 };
 win.customCards = win.customCards || [];
-if (!win.customCards.some((card) => card.type === "difm-radio-card")) {
+if (!win.customCards.some((card) => card.type === CARD_TAG)) {
   win.customCards.push({
-    type: "difm-radio-card",
+    type: CARD_TAG,
     name: "DI.FM favourite stations",
     description: "Speaker dropdown, favourite station icons, and now playing.",
     preview: true,

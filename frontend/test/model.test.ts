@@ -136,6 +136,23 @@ describe("parseFavourites and deriveView", () => {
     expect(view.volume.supported).toBe(false);
     expect(view.speakerEntityId).toBe("media_player.kitchen");
   });
+
+  it("falls back to default_media_player when idle and no card override", () => {
+    const hass = createHass({
+      "media_player.kitchen": entity("media_player.kitchen", "idle", {
+        friendly_name: "Kitchen",
+        supported_features: 4,
+      }),
+      "media_player.di_fm_radio": radioEntity({
+        attributes: {
+          speaker_entity_id: null,
+          default_media_player: "media_player.kitchen",
+        },
+      }),
+    });
+    const view = deriveView(hass, normalizeConfig({ entity: "media_player.di_fm_radio" }));
+    expect(view.speakerEntityId).toBe("media_player.kitchen");
+  });
 });
 
 describe("helpers", () => {

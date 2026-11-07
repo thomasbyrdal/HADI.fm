@@ -79,6 +79,46 @@ describe("DifmRadioCard", () => {
     });
   });
 
+  it("selects the configured speaker on load instead of the first list entry", () => {
+    const hass = createHass({
+      "media_player.kitchen": entity("media_player.kitchen", "idle", {
+        friendly_name: "Kitchen",
+        volume_level: 0.2,
+        supported_features: 4,
+      }),
+      "media_player.di_fm_radio": radioEntity({
+        attributes: {
+          speaker_entity_id: null,
+          default_media_player: null,
+        },
+      }),
+    });
+    const { card } = mount(hass, { media_player: "media_player.living_room" });
+    const select = card.shadowRoot!.querySelector<HTMLSelectElement>(".speaker-select")!;
+    const values = [...select.options].map((option) => option.value);
+    expect(values[0]).toBe("media_player.kitchen");
+    expect(select.value).toBe("media_player.living_room");
+  });
+
+  it("selects the integration default speaker when the card has no override", () => {
+    const hass = createHass({
+      "media_player.kitchen": entity("media_player.kitchen", "idle", {
+        friendly_name: "Kitchen",
+        volume_level: 0.2,
+        supported_features: 4,
+      }),
+      "media_player.di_fm_radio": radioEntity({
+        attributes: {
+          speaker_entity_id: null,
+          default_media_player: "media_player.living_room",
+        },
+      }),
+    });
+    const { card } = mount(hass);
+    const select = card.shadowRoot!.querySelector<HTMLSelectElement>(".speaker-select")!;
+    expect(select.value).toBe("media_player.living_room");
+  });
+
   it("shows large artwork for the selected station", () => {
     const hass = createHass({
       "media_player.di_fm_radio": radioEntity({

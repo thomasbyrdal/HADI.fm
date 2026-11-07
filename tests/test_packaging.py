@@ -28,6 +28,7 @@ def test_hacs_and_manifest_required_fields() -> None:
     assert "media_entertainment.music_radio_services" in manifest.get("categories", [])
     assert "media_entertainment.speakers_audio" in manifest.get("categories", [])
     assert (INTEGRATION / "www" / "difm-radio-card.js").is_file()
+    assert (INTEGRATION / "www" / "difm-radio-card.bundle.js").is_file()
     assert (INTEGRATION / "services.yaml").is_file()
     assert (INTEGRATION / "translations" / "en.json").is_file()
     assert (INTEGRATION / "translations" / "en-GB.json").is_file()
@@ -50,6 +51,7 @@ def test_clean_install_layout_is_self_contained() -> None:
         "config_flow.py",
         "media_player.py",
         "www/difm-radio-card.js",
+        "www/difm-radio-card.bundle.js",
         "www/difm-radio-settings.js",
         "websocket_api.py",
         "strings.json",
@@ -59,6 +61,6 @@ def test_clean_install_layout_is_self_contained() -> None:
 
 
 def test_card_bundle_does_not_ship_raw_listen_key_parameters() -> None:
-    source = (INTEGRATION / "www" / "difm-radio-card.js").read_text(encoding="utf-8")
+    source = (INTEGRATION / "www" / "difm-radio-card.bundle.js").read_text(encoding="utf-8")
     assert "custom:difm-radio-card" in source
     assert "listen_key=" not in source or "REDACTED" in source

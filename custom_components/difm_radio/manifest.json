@@ -16,5 +16,5 @@
   "loggers": ["custom_components.difm_radio"],
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.2.4"
+  "version": "0.2.5"
 }

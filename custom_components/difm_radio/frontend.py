@@ -5,9 +5,11 @@ is part of the integration, so it is served from ``custom_components/difm_radio/
 at ``/difm_radio/difm-radio-card.js``.
 
 Important: do **not** fall back to ``add_extra_js_url`` while Lovelace is still
-starting. That races the dashboard render and surfaces as
-``Custom element doesn't exist: difm-radio-card`` after every restart.
-Storage-mode installs must register a Lovelace Dashboard resource instead.
+starting. That races the dashboard render and HA's scoped custom-element
+registry, and surfaces as ``Custom element doesn't exist: difm-radio-card``.
+Storage-mode installs must register a Lovelace Dashboard resource pointing at
+the tiny loader (``difm-radio-card.js``), which waits for ``home-assistant``
+before importing ``difm-radio-card.bundle.js``.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from .const import (
+    CARD_BUNDLE_FILENAME,
     CARD_FILENAME,
     DOMAIN,
     FRONTEND_URL_BASE,
@@ -97,7 +100,11 @@ async def _async_register_static_path(hass) -> None:
         return
     card_file = path / CARD_FILENAME
     if not card_file.is_file():
-        _LOGGER.warning("DI.FM Radio card bundle is missing: %s", card_file)
+        _LOGGER.warning("DI.FM Radio card loader is missing: %s", card_file)
+        return
+    card_bundle = path / CARD_BUNDLE_FILENAME
+    if not card_bundle.is_file():
+        _LOGGER.warning("DI.FM Radio card bundle is missing: %s", card_bundle)
         return
     settings_file = path / SETTINGS_FILENAME
     if not settings_file.is_file():
@@ -135,13 +142,14 @@ async def _async_register_card_module(hass, attempt: int = 0) -> None:
 
     lovelace = hass.data.get("lovelace")
     if lovelace is None:
-        # Lovelace has not started yet. Wait — do not use add_extra_js_url here.
+        # Lovelace has not started yet. Wait — do not use add_extra_js_url here;
+        # early extra JS races HA's scoped custom-element registry.
         if attempt >= _MAX_RESOURCE_WAITS:
-            _LOGGER.warning(
-                "Lovelace was not available; falling back to frontend extra JS for %s",
+            _LOGGER.error(
+                "Lovelace was not available after waiting. Add a Dashboard resource "
+                "of type module pointing at %s",
                 card_module_url(),
             )
-            _register_extra_js_url(hass)
             return
         _LOGGER.debug(
             "Waiting for Lovelace before registering card (attempt %s/%s)",
@@ -163,11 +171,11 @@ async def _async_register_card_module(hass, attempt: int = 0) -> None:
     resources = getattr(lovelace, "resources", None)
     if resources is None:
         if attempt >= _MAX_RESOURCE_WAITS:
-            _LOGGER.warning(
-                "Lovelace resources missing; falling back to frontend extra JS for %s",
+            _LOGGER.error(
+                "Lovelace resources missing. Add a Dashboard resource of type module "
+                "pointing at %s",
                 card_module_url(),
             )
-            _register_extra_js_url(hass)
             return
         _schedule_retry(hass, attempt)
         return
@@ -176,12 +184,11 @@ async def _async_register_card_module(hass, attempt: int = 0) -> None:
         await _async_load_resources(resources)
     if not getattr(resources, "loaded", False):
         if attempt >= _MAX_RESOURCE_WAITS:
-            _LOGGER.warning(
+            _LOGGER.error(
                 "Lovelace resources were not ready. Add a Dashboard resource of "
                 "type module pointing at %s",
                 card_module_url(),
             )
-            _register_extra_js_url(hass)
             return
         _schedule_retry(hass, attempt)
         return
@@ -190,7 +197,6 @@ async def _async_register_card_module(hass, attempt: int = 0) -> None:
         await _async_upsert_resource(resources)
     except Exception as err:  # noqa: BLE001
         _LOGGER.warning("Could not add the DI.FM Radio Lovelace resource: %s", err)
-        _register_extra_js_url(hass)
         return
     hass.data[_MODULE_FLAG] = True
     _LOGGER.info("Registered Lovelace card resource %s", card_module_url())

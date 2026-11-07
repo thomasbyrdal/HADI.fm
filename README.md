@@ -62,7 +62,7 @@ See [docs/releasing.md](docs/releasing.md) for GitHub release notes. The repo st
 ## Manual / clean install
 
 1. Copy `custom_components/difm_radio` into `<config>/custom_components/difm_radio` so that `manifest.json` is at `<config>/custom_components/difm_radio/manifest.json`.
-2. Confirm `www/difm-radio-card.js` and `www/difm-radio-settings.js` are in that folder.
+2. Confirm `www/difm-radio-card.js`, `www/difm-radio-card.bundle.js`, and `www/difm-radio-settings.js` are in that folder.
 3. Restart Home Assistant.
 4. Add the integration from the UI.
 

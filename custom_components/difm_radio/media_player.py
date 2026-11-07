@@ -226,6 +226,7 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
             state.owned,
             state.last_error_code,
             state.speaker_entity_id,
+            self._default_speaker(),
             station.id if station else None,
         )
 
@@ -233,7 +234,15 @@ class DifmRadioMediaPlayer(MediaPlayerEntity, RestoreEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         key = self._attributes_cache_key()
         if self._cached_attributes is None or self._cached_attributes_key != key:
-            self._cached_attributes = playback_attributes(self.controller.state)
+            attrs = playback_attributes(self.controller.state)
+            default_speaker = self._default_speaker()
+            if default_speaker:
+                attrs["default_media_player"] = default_speaker
+            # When idle, surface the configured default so the Lovelace card can
+            # pre-select it instead of the first alphabetical speaker.
+            if not attrs.get("speaker_entity_id") and default_speaker:
+                attrs["speaker_entity_id"] = default_speaker
+            self._cached_attributes = attrs
             self._cached_attributes_key = key
         return self._cached_attributes
 
