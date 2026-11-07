@@ -33,7 +33,7 @@ Never paste your listen key, Icecast URLs that contain it, or account passwords 
 3. Confirm the **DI.FM Radio** settings panel still lists the favourite stations you picked during setup.
 4. Hard-refresh the browser so it loads `difm-radio-card.js?v=0.1.4`.
 
-HACS does not treat a new `main` commit as an update if the integration was first installed before any GitHub release existed. Use **⋮ → Redownload** and pick the release version.
+The Marketplace does not treat a new `main` commit as an update if the integration was first installed before any GitHub release existed. Use **⋮ → Redownload** (or the equivalent update action) and pick the release version.
 
 ## Custom element doesn't exist: difm-radio-card
 
@@ -52,7 +52,7 @@ HACS does not treat a new `main` commit as an update if the integration was firs
 
 ## Card is missing
 
-This is an **integration** card, not a HACS dashboard plugin. It will not appear under `/config/www/community/`. The file lives at:
+This is an **integration** card, not a Marketplace/community dashboard plugin. It will not appear under `/config/www/community/`. The file lives at:
 
 `custom_components/difm_radio/www/difm-radio-card.js`
 

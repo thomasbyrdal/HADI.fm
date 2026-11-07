@@ -1,4 +1,4 @@
-"""HACS and clean-install packaging checks."""
+"""Marketplace metadata and clean-install packaging checks."""
 
 from __future__ import annotations
 

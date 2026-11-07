@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.3 — 2026-11-07
+
+- Document installation via Home Assistant **Marketplace** (formerly HACS)
+
 ## 0.2.2 — 2026-11-07
 
 - Fix settings panel flicker caused by rebuilding the DOM on every panel reattach

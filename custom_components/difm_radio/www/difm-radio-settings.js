@@ -885,7 +885,7 @@ var DifmRadioSettings = class extends HTMLElement {
 };
 
 // src/settings-register.ts
-var SETTINGS_VERSION = "0.2.2";
+var SETTINGS_VERSION = "0.2.3";
 if (!customElements.get(SETTINGS_ELEMENT)) {
   customElements.define(SETTINGS_ELEMENT, DifmRadioSettings);
 }

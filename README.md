@@ -44,14 +44,17 @@ Validation uses:
 
 A request without `listen_key` is public and is not treated as success.
 
-## Install with HACS
+## Install from the Marketplace
 
-1. Publish or add this repository as a HACS **custom repository** of type **Integration**. On Home Assistant 2026.11+ that flow lives under **Settings → Marketplace**.
-2. Download **DI.FM Radio**.
-3. Restart Home Assistant.
-4. Go to **Settings → Devices & services → Add integration → DI.FM Radio**.
+Home Assistant’s custom-integration catalogue is now **Settings → Marketplace** (formerly HACS).
 
-See [docs/releasing.md](docs/releasing.md) for GitHub release notes.
+1. Open **Settings → Marketplace**.
+2. Add this GitHub repository as a **custom repository** of type **Integration** (if it is not already listed).
+3. Download **DI.FM Radio**.
+4. Restart Home Assistant.
+5. Go to **Settings → Devices & services → Add integration → DI.FM Radio**.
+
+See [docs/releasing.md](docs/releasing.md) for GitHub release notes. The repo still ships `hacs.json` so Marketplace can discover the integration.
 
 ## Manual / clean install
 
@@ -94,7 +97,7 @@ Stream quality (official Premium copy):
 
 ## Lovelace card
 
-The card is bundled with the integration. It is **not** installed under `/www/community/` the way HACS dashboard plugins are. The file is `custom_components/difm_radio/www/difm-radio-card.js`, served as `/difm_radio/difm-radio-card.js`.
+The card is bundled with the integration. It is **not** installed under `/www/community/` the way older community dashboard plugins were. The file is `custom_components/difm_radio/www/difm-radio-card.js`, served as `/difm_radio/difm-radio-card.js`.
 
 After a restart, Home Assistant should add a Dashboard resource of type **module** for that URL. Then:
 
@@ -187,7 +190,7 @@ These were not completed automatically in this repository:
 | --- | --- |
 | Copy onto a private Home Assistant instance | Needs local credentials; not stored in this repo |
 | Type a listen key in the UI | The key must be entered locally; it is not stored in this repo |
-| HACS default store listing | Needs the public GitHub repository and releases (custom repository works today) |
+| Marketplace default catalogue listing | Needs the public GitHub repository and releases (custom repository works today) |
 
 ## Report issues
 

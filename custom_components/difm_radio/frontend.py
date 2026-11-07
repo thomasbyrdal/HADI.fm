@@ -1,7 +1,7 @@
 """Register the Lovelace card as a frontend module.
 
-HACS dashboard plugins live in ``/config/www/community/``. This card is part
-of the integration, so it is served from ``custom_components/difm_radio/www``
+Older community dashboard plugins lived in ``/config/www/community/``. This card
+is part of the integration, so it is served from ``custom_components/difm_radio/www``
 at ``/difm_radio/difm-radio-card.js``.
 
 Important: do **not** fall back to ``add_extra_js_url`` while Lovelace is still

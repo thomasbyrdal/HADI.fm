@@ -9,7 +9,7 @@ Done. See [api-research.md](api-research.md).
 Implemented:
 
 - Custom integration package `custom_components/difm_radio`
-- Manifest, translations, HACS metadata, MIT licence
+- Manifest, translations, Marketplace metadata (`hacs.json`), MIT licence
 - Config flow that validates a listen key against the verified listen endpoint
 - pytest unit tests that mock HTTP and do not need a real listen key
 
@@ -77,23 +77,22 @@ Implemented:
 - Services unload when the last config entry unloads
 - Frontend registration is idempotent from both `async_setup` and `async_setup_entry`
 
-## Milestone 8 — Tests, HACS, docs, clean install
+## Milestone 8 — Tests, Marketplace, docs, clean install
 
 Implemented:
 
 - Backend and frontend tests plus Ruff / TypeScript checks
-- `hacs.json`, brand icon, changelog, issue template, release notes
-- Installation, services, troubleshooting, and screenshot mockup in the README
+- `hacs.json` (Marketplace discovery metadata), brand icon, changelog, issue template, release notes
+- Installation, services, troubleshooting, and screenshots in the README
 - Packaging test for a self-contained `custom_components/difm_radio` tree
 
-Clean install on `http://homeassistant.local:8123/` was reachable (HTTP UI on 192.168.1.216). The instance presented a login form. No Home Assistant credentials were available, so the integration was **not** copied onto that host and speaker audio was **not** exercised there.
+Clean install on `http://homeassistant.local:8123/` was reachable (HTTP UI on 192.168.1.216). The instance presented a login form. No Home Assistant credentials were available at that milestone, so the integration was **not** copied onto that host there.
 
 ## Remaining manual work
 
-See the “Still requires real hardware or credentials” list in the project README / this file’s notes:
+See the “Still requires a listen key or a login” list in the project README:
 
-- Home Assistant login, then copy `custom_components/difm_radio` and restart
-- Enter a listen key in the UI
-- Hear audio on a physical speaker
-- Publish the GitHub repository to HACS / Marketplace
+- Enter a listen key in the UI on each Home Assistant instance
+- Keep GitHub releases current so Marketplace can offer updates
+- Marketplace default catalogue listing (custom repository works today)
 
