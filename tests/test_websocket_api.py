@@ -118,6 +118,7 @@ async def test_ws_get_and_set_config(hass) -> None:
     assert connection.messages[-1]["success"] is True
     payload = connection.messages[-1]["result"]
     assert payload["default_media_player"] == "media_player.kitchen"
+    assert payload[CONF_LISTEN_KEY] == "valid-listen-key-1"
     assert payload["favourites"][0]["id"] == "1"
     assert payload["stations"][0]["artwork_url"].startswith("https://")
     assert any(item["entity_id"] == "media_player.kitchen" for item in payload["media_players"])
@@ -131,8 +132,26 @@ async def test_ws_get_and_set_config(hass) -> None:
             CONF_DEFAULT_MEDIA_PLAYER: "media_player.kitchen",
             CONF_STREAM_QUALITY: "premium",
             CONF_FAVOURITES: ["1", "2"],
+            CONF_LISTEN_KEY: "valid-listen-key-1",
         },
     )
     assert connection.messages[-1]["success"] is True
     assert entry.options[CONF_STREAM_QUALITY] == "premium"
+    assert entry.data[CONF_LISTEN_KEY] == "valid-listen-key-1"
     assert [fav.id for fav in parse_favourites(entry.options[CONF_FAVOURITES])] == ["1", "2"]
+
+    await ws_set_config(
+        hass,
+        connection,
+        {
+            "id": 3,
+            "type": WS_TYPE_SET_CONFIG,
+            CONF_DEFAULT_MEDIA_PLAYER: "media_player.kitchen",
+            CONF_STREAM_QUALITY: "premium",
+            CONF_FAVOURITES: ["1", "2"],
+            CONF_LISTEN_KEY: "",
+        },
+    )
+    assert connection.messages[-1]["success"] is True
+    assert entry.data[CONF_LISTEN_KEY] == ""
+

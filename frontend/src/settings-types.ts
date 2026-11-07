@@ -1,8 +1,8 @@
 export const SETTINGS_ELEMENT = "difm-radio-settings";
 export const WS_GET_CONFIG = "difm_radio/get_config";
 export const WS_SET_CONFIG = "difm_radio/set_config";
-export const GRID_COLUMNS = 6;
-export const GRID_VISIBLE_ROWS = 6;
+export const GRID_COLUMNS = 5;
+export const GRID_VISIBLE_ROWS = 5;
 
 export interface MediaPlayerOption {
   entity_id: string;
@@ -31,6 +31,7 @@ export interface StationOption {
 export interface SettingsConfig {
   default_media_player: string | null;
   stream_quality: string;
+  listen_key: string;
   qualities: QualityOption[];
   media_players: MediaPlayerOption[];
   networks: NetworkOption[];

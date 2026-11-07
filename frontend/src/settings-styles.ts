@@ -1,7 +1,5 @@
 import { GRID_COLUMNS, GRID_VISIBLE_ROWS } from "./settings-types";
 
-/** Tile size used to size the scroll viewport to roughly GRID_VISIBLE_ROWS. */
-const TILE_PX = 84;
 const GAP_PX = 8;
 
 export const SETTINGS_STYLES = `
@@ -10,7 +8,6 @@ export const SETTINGS_STYLES = `
   height: 100%;
   background: var(--primary-background-color, #fafafa);
   color: var(--primary-text-color, #212121);
-  --settings-tile: ${TILE_PX}px;
   --settings-gap: ${GAP_PX}px;
   --settings-cols: ${GRID_COLUMNS};
   --settings-rows: ${GRID_VISIBLE_ROWS};
@@ -73,22 +70,61 @@ export const SETTINGS_STYLES = `
   font-size: 13px;
   color: var(--secondary-text-color, #727272);
 }
-.field select {
-  appearance: none;
-  border: 1px solid var(--divider-color, #e0e0e0);
-  background: var(--card-background-color, #fff);
-  color: inherit;
+.field select,
+.field input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
   border-radius: 8px;
   padding: 10px 12px;
   font: inherit;
+  color: inherit;
+}
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  border: 1px solid var(--primary-color, #03a9f4);
+  background-color: var(--primary-color, #03a9f4);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 22px;
+  color: var(--text-primary-color, #fff);
+  padding-right: 40px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.field select:hover {
+  filter: brightness(1.05);
+}
+.field select:focus-visible {
+  outline: 2px solid var(--primary-color, #03a9f4);
+  outline-offset: 2px;
+}
+.field input[type="text"] {
+  border: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--card-background-color, #fff);
+}
+.field input[type="text"]:focus-visible {
+  outline: 2px solid var(--primary-color, #03a9f4);
+  outline-offset: 1px;
+  border-color: var(--primary-color, #03a9f4);
+}
+.field .field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--secondary-text-color, #727272);
 }
 .grid-scroll {
+  container-type: inline-size;
   border: 1px solid var(--divider-color, #e0e0e0);
   border-radius: 12px;
   background: var(--card-background-color, #fff);
   padding: 8px;
   max-height: calc(
-    var(--settings-rows) * var(--settings-tile) + (var(--settings-rows) - 1) * var(--settings-gap) + 16px
+    var(--settings-rows) * ((100cqw - 16px - (var(--settings-cols) - 1) * var(--settings-gap)) / var(--settings-cols))
+    + (var(--settings-rows) - 1) * var(--settings-gap)
+    + 16px
   );
   overflow-y: auto;
   overflow-x: hidden;
@@ -101,6 +137,7 @@ export const SETTINGS_STYLES = `
 .tile {
   position: relative;
   aspect-ratio: 1;
+  width: 100%;
   border-radius: 10px;
   overflow: hidden;
   background: var(--secondary-background-color, #eee);
@@ -108,7 +145,7 @@ export const SETTINGS_STYLES = `
   cursor: pointer;
   padding: 0;
   min-height: 0;
-  height: var(--settings-tile);
+  min-width: 0;
 }
 .tile:focus-visible {
   outline: 2px solid var(--primary-color, #03a9f4);
@@ -120,6 +157,14 @@ export const SETTINGS_STYLES = `
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.tile img {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  background: var(--secondary-background-color, #eee);
+}
+.tile img.loaded {
+  opacity: 1;
 }
 .tile .placeholder {
   display: grid;

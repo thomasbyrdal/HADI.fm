@@ -1,12 +1,55 @@
+// src/artwork-cache.ts
+var ready = /* @__PURE__ */ new Map();
+var inflight = /* @__PURE__ */ new Map();
+function peekArtwork(url) {
+  return ready.get(url) ?? null;
+}
+function loadArtwork(url) {
+  const cached = ready.get(url);
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+  const pending = inflight.get(url);
+  if (pending) {
+    return pending;
+  }
+  const task = new Promise((resolve, reject) => {
+    const img = new Image();
+    img.decoding = "async";
+    img.onload = () => {
+      ready.set(url, url);
+      inflight.delete(url);
+      resolve(url);
+    };
+    img.onerror = () => {
+      inflight.delete(url);
+      reject(new Error(`Failed to load artwork: ${url}`));
+    };
+    img.src = url;
+  });
+  inflight.set(url, task);
+  return task;
+}
+function prefetchArtwork(urls) {
+  const seen = /* @__PURE__ */ new Set();
+  for (const raw of urls) {
+    if (!raw || seen.has(raw) || ready.has(raw) || inflight.has(raw)) {
+      continue;
+    }
+    seen.add(raw);
+    void loadArtwork(raw).catch(() => {
+    });
+  }
+}
+
 // src/settings-types.ts
 var SETTINGS_ELEMENT = "difm-radio-settings";
 var WS_GET_CONFIG = "difm_radio/get_config";
 var WS_SET_CONFIG = "difm_radio/set_config";
-var GRID_COLUMNS = 6;
-var GRID_VISIBLE_ROWS = 6;
+var GRID_COLUMNS = 5;
+var GRID_VISIBLE_ROWS = 5;
 
 // src/settings-styles.ts
-var TILE_PX = 84;
 var GAP_PX = 8;
 var SETTINGS_STYLES = `
 :host {
@@ -14,7 +57,6 @@ var SETTINGS_STYLES = `
   height: 100%;
   background: var(--primary-background-color, #fafafa);
   color: var(--primary-text-color, #212121);
-  --settings-tile: ${TILE_PX}px;
   --settings-gap: ${GAP_PX}px;
   --settings-cols: ${GRID_COLUMNS};
   --settings-rows: ${GRID_VISIBLE_ROWS};
@@ -77,22 +119,61 @@ var SETTINGS_STYLES = `
   font-size: 13px;
   color: var(--secondary-text-color, #727272);
 }
-.field select {
-  appearance: none;
-  border: 1px solid var(--divider-color, #e0e0e0);
-  background: var(--card-background-color, #fff);
-  color: inherit;
+.field select,
+.field input[type="text"] {
+  box-sizing: border-box;
+  width: 100%;
   border-radius: 8px;
   padding: 10px 12px;
   font: inherit;
+  color: inherit;
+}
+.field select {
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  border: 1px solid var(--primary-color, #03a9f4);
+  background-color: var(--primary-color, #03a9f4);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ffffff'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 22px;
+  color: var(--text-primary-color, #fff);
+  padding-right: 40px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.field select:hover {
+  filter: brightness(1.05);
+}
+.field select:focus-visible {
+  outline: 2px solid var(--primary-color, #03a9f4);
+  outline-offset: 2px;
+}
+.field input[type="text"] {
+  border: 1px solid var(--divider-color, #e0e0e0);
+  background: var(--card-background-color, #fff);
+}
+.field input[type="text"]:focus-visible {
+  outline: 2px solid var(--primary-color, #03a9f4);
+  outline-offset: 1px;
+  border-color: var(--primary-color, #03a9f4);
+}
+.field .field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--secondary-text-color, #727272);
 }
 .grid-scroll {
+  container-type: inline-size;
   border: 1px solid var(--divider-color, #e0e0e0);
   border-radius: 12px;
   background: var(--card-background-color, #fff);
   padding: 8px;
   max-height: calc(
-    var(--settings-rows) * var(--settings-tile) + (var(--settings-rows) - 1) * var(--settings-gap) + 16px
+    var(--settings-rows) * ((100cqw - 16px - (var(--settings-cols) - 1) * var(--settings-gap)) / var(--settings-cols))
+    + (var(--settings-rows) - 1) * var(--settings-gap)
+    + 16px
   );
   overflow-y: auto;
   overflow-x: hidden;
@@ -105,6 +186,7 @@ var SETTINGS_STYLES = `
 .tile {
   position: relative;
   aspect-ratio: 1;
+  width: 100%;
   border-radius: 10px;
   overflow: hidden;
   background: var(--secondary-background-color, #eee);
@@ -112,7 +194,7 @@ var SETTINGS_STYLES = `
   cursor: pointer;
   padding: 0;
   min-height: 0;
-  height: var(--settings-tile);
+  min-width: 0;
 }
 .tile:focus-visible {
   outline: 2px solid var(--primary-color, #03a9f4);
@@ -124,6 +206,14 @@ var SETTINGS_STYLES = `
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.tile img {
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  background: var(--secondary-background-color, #eee);
+}
+.tile img.loaded {
+  opacity: 1;
 }
 .tile .placeholder {
   display: grid;
@@ -290,10 +380,11 @@ function escapeHtml(value) {
 function stationById(stations, id) {
   return stations.find((item) => item.id === id);
 }
+function sameIds(a, b) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
 var DifmRadioSettings = class extends HTMLElement {
   _hass = null;
-  _narrow = false;
-  _panel = null;
   _loaded = false;
   _loading = false;
   _saving = false;
@@ -302,7 +393,12 @@ var DifmRadioSettings = class extends HTMLElement {
   _config = null;
   _speaker = "";
   _quality = "";
+  _listenKey = "";
   _favouriteIds = [];
+  _baselineSpeaker = "";
+  _baselineQuality = "";
+  _baselineListenKey = "";
+  _baselineFavouriteIds = [];
   _addOpen = false;
   _networkKey = "";
   _pendingIds = [];
@@ -311,27 +407,22 @@ var DifmRadioSettings = class extends HTMLElement {
     this._hass = hass;
     if (!this._loaded && !this._loading) {
       void this._load();
-    } else {
-      this._render();
     }
   }
-  set narrow(narrow) {
-    this._narrow = Boolean(narrow);
-    this._render();
+  set narrow(_narrow) {
   }
-  set panel(panel) {
-    this._panel = panel;
-    this._render();
+  set panel(_panel) {
   }
   connectedCallback() {
     if (!this._bound) {
       this._bound = true;
       this.addEventListener("click", this._onClick);
       this.addEventListener("change", this._onChange);
+      this.addEventListener("input", this._onInput);
     }
     if (this._hass && !this._loaded && !this._loading) {
       void this._load();
-    } else {
+    } else if (this._loaded) {
       this._render();
     }
   }
@@ -339,8 +430,29 @@ var DifmRadioSettings = class extends HTMLElement {
     if (this._bound) {
       this.removeEventListener("click", this._onClick);
       this.removeEventListener("change", this._onChange);
+      this.removeEventListener("input", this._onInput);
       this._bound = false;
     }
+  }
+  _isDirty() {
+    return this._speaker !== this._baselineSpeaker || this._quality !== this._baselineQuality || this._listenKey !== this._baselineListenKey || !sameIds(this._favouriteIds, this._baselineFavouriteIds);
+  }
+  _captureBaseline() {
+    this._baselineSpeaker = this._speaker;
+    this._baselineQuality = this._quality;
+    this._baselineListenKey = this._listenKey;
+    this._baselineFavouriteIds = [...this._favouriteIds];
+  }
+  _syncSaveButton() {
+    const button = this.querySelector(
+      "[data-action='save']"
+    );
+    if (!button) {
+      return;
+    }
+    const dirty = this._isDirty();
+    button.disabled = this._saving || !dirty;
+    button.textContent = this._saving ? "Saving\u2026" : "Save";
   }
   _onClick = (event) => {
     const target = event.target;
@@ -410,22 +522,69 @@ var DifmRadioSettings = class extends HTMLElement {
     if (target.name === "speaker") {
       this._speaker = target.value;
       this._status = null;
-    } else if (target.name === "quality") {
-      this._quality = target.value;
-      this._status = null;
-    } else if (target.name === "network") {
-      this._networkKey = target.value;
-      this._render();
+      this._syncSaveButton();
       return;
     }
-    this._render();
+    if (target.name === "quality") {
+      this._quality = target.value;
+      this._status = null;
+      this._syncSaveButton();
+      return;
+    }
+    if (target.name === "network") {
+      this._networkKey = target.value;
+      this._prefetchNetwork(this._networkKey);
+      this._render();
+    }
+  };
+  _onInput = (event) => {
+    const target = event.target;
+    if (!target || target.name !== "listen_key") {
+      return;
+    }
+    this._listenKey = target.value;
+    this._status = null;
+    this._syncSaveButton();
   };
   _openAddDialog() {
     const networks = this._config?.networks ?? [];
     this._pendingIds = [...this._favouriteIds];
     this._networkKey = this._networkKey || networks[0]?.key || this._config?.stations[0]?.network || "";
     this._addOpen = true;
+    this._prefetchNetwork(this._networkKey);
     this._render();
+  }
+  _prefetchNetwork(networkKey) {
+    prefetchArtwork(
+      (this._config?.stations ?? []).filter((station) => station.network === networkKey).map((station) => station.artwork_url)
+    );
+  }
+  _prefetchKnownArtwork() {
+    prefetchArtwork((this._config?.favourites ?? []).map((item) => item.artwork_url));
+  }
+  _hydrateArtwork() {
+    this.querySelectorAll("img[data-art]").forEach((img) => {
+      const url = img.dataset.art;
+      if (!url) {
+        return;
+      }
+      const cached = peekArtwork(url);
+      if (cached) {
+        if (img.src !== cached) {
+          img.src = cached;
+        }
+        img.classList.add("loaded");
+        return;
+      }
+      void loadArtwork(url).then((resolved) => {
+        if (!img.isConnected || img.dataset.art !== url) {
+          return;
+        }
+        img.src = resolved;
+        img.classList.add("loaded");
+      }).catch(() => {
+      });
+    });
   }
   async _load() {
     if (!this._hass || this._loading) {
@@ -440,9 +599,12 @@ var DifmRadioSettings = class extends HTMLElement {
       this._config = data;
       this._speaker = data.default_media_player || data.media_players[0]?.entity_id || "";
       this._quality = data.stream_quality || data.qualities[0]?.value || "";
+      this._listenKey = data.listen_key ?? "";
       this._favouriteIds = data.favourites.map((item) => item.id);
       this._networkKey = data.networks[0]?.key || data.stations[0]?.network || "";
+      this._captureBaseline();
       this._loaded = true;
+      this._prefetchKnownArtwork();
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -452,6 +614,12 @@ var DifmRadioSettings = class extends HTMLElement {
   }
   async _save() {
     if (!this._hass || this._saving) {
+      return;
+    }
+    if (!this._isDirty()) {
+      this._status = "No changes to save.";
+      this._error = null;
+      this._render();
       return;
     }
     if (!this._speaker) {
@@ -467,12 +635,13 @@ var DifmRadioSettings = class extends HTMLElement {
     this._saving = true;
     this._error = null;
     this._status = null;
-    this._render();
+    this._syncSaveButton();
     try {
       const result = await this._hass.callWS({
         type: WS_SET_CONFIG,
         default_media_player: this._speaker,
         stream_quality: this._quality,
+        listen_key: this._listenKey,
         favourites: this._favouriteIds
       });
       if (this._config) {
@@ -480,10 +649,15 @@ var DifmRadioSettings = class extends HTMLElement {
           ...this._config,
           default_media_player: result.default_media_player,
           stream_quality: result.stream_quality,
+          listen_key: result.listen_key,
           favourites: result.favourites
         };
       }
+      this._speaker = result.default_media_player;
+      this._quality = result.stream_quality;
+      this._listenKey = result.listen_key;
       this._favouriteIds = result.favourites.map((item) => item.id);
+      this._captureBaseline();
       this._status = "Settings saved.";
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
@@ -510,7 +684,14 @@ var DifmRadioSettings = class extends HTMLElement {
     );
   }
   _renderTile(station, options) {
-    const art = station.artwork_url ? `<img src="${escapeHtml(station.artwork_url)}" alt="" loading="lazy" />` : `<div class="placeholder">${escapeHtml(station.name)}</div>`;
+    let art;
+    if (station.artwork_url) {
+      const cached = peekArtwork(station.artwork_url);
+      const safeUrl = escapeHtml(station.artwork_url);
+      art = cached ? `<img class="loaded" src="${escapeHtml(cached)}" alt="" decoding="async" data-art="${safeUrl}" />` : `<img alt="" decoding="async" data-art="${safeUrl}" />`;
+    } else {
+      art = `<div class="placeholder">${escapeHtml(station.name)}</div>`;
+    }
     const selectAttrs = options.selectAction ? `data-action="${options.selectAction}" data-id="${escapeHtml(station.id)}"` : "";
     const selectedClass = options.selected ? " selected" : "";
     const unavailable = station.available ? "" : " unavailable";
@@ -540,6 +721,9 @@ var DifmRadioSettings = class extends HTMLElement {
       </div>
     `;
   }
+  _saveDisabledAttr() {
+    return this._saving || !this._isDirty() ? "disabled" : "";
+  }
   _render() {
     if (!this.isConnected) {
       return;
@@ -559,11 +743,11 @@ var DifmRadioSettings = class extends HTMLElement {
           ${this._status ? `<div class="status">${escapeHtml(this._status)}</div>` : ""}
           ${this._loading || !this._loaded ? `<p class="hint">${this._loading ? "Loading settings\u2026" : "Waiting for Home Assistant\u2026"}</p>` : `
             <div class="section">
-              <h2>Playback</h2>
-              <p class="hint">Default speaker and stream quality used when you tap a favourite.</p>
+              <h2>DI.FM Radio configuration</h2>
+              <p class="hint">This integration streams DI.FM and sister services (JazzRadio, RockRadio, ClassicalRadio, and more) to a Home Assistant media player using your Premium listen key. On this page you can set the default speaker and stream quality, update or clear the listen key, and choose which stations appear as favourites on the dashboard card.</p>
               <div class="field">
                 <label for="speaker">Default speaker</label>
-                <select id="speaker" name="speaker">
+                <select id="speaker" name="speaker" aria-label="Default speaker">
                   ${players.map(
       (player) => `<option value="${escapeHtml(player.entity_id)}" ${player.entity_id === this._speaker ? "selected" : ""}>${escapeHtml(player.name)}</option>`
     ).join("")}
@@ -571,11 +755,24 @@ var DifmRadioSettings = class extends HTMLElement {
               </div>
               <div class="field">
                 <label for="quality">Stream quality</label>
-                <select id="quality" name="quality">
+                <select id="quality" name="quality" aria-label="Stream quality">
                   ${qualities.map(
       (item) => `<option value="${escapeHtml(item.value)}" ${item.value === this._quality ? "selected" : ""}>${escapeHtml(item.label)}</option>`
     ).join("")}
                 </select>
+              </div>
+              <div class="field">
+                <label for="listen_key">Listen key</label>
+                <input
+                  id="listen_key"
+                  name="listen_key"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  value="${escapeHtml(this._listenKey)}"
+                  aria-label="Listen key"
+                />
+                <p class="field-hint">From Player Settings on any AudioAddict network site. Clear and save to remove the stored key.</p>
               </div>
             </div>
             <div class="section">
@@ -586,7 +783,7 @@ var DifmRadioSettings = class extends HTMLElement {
     })}
               <div class="actions">
                 <button type="button" class="secondary" data-action="open-add">Add favourite station</button>
-                <button type="button" class="primary" data-action="save" ${this._saving ? "disabled" : ""}>${this._saving ? "Saving\u2026" : "Save"}</button>
+                <button type="button" class="primary" data-action="save" ${this._saveDisabledAttr()}>${this._saving ? "Saving\u2026" : "Save"}</button>
               </div>
             </div>
           `}
@@ -594,8 +791,7 @@ var DifmRadioSettings = class extends HTMLElement {
       </div>
       ${this._addOpen ? this._renderAddDialog(networks) : ""}
     `;
-    void this._narrow;
-    void this._panel;
+    this._hydrateArtwork();
   }
   _renderAddDialog(networks) {
     const available = this._networkStations();
@@ -610,7 +806,7 @@ var DifmRadioSettings = class extends HTMLElement {
           <div class="dialog-body">
             <div class="field" style="max-width:100%">
               <label for="network">Radio service</label>
-              <select id="network" name="network">
+              <select id="network" name="network" aria-label="Radio service">
                 ${networks.map(
       (network) => `<option value="${escapeHtml(network.key)}" ${network.key === this._networkKey ? "selected" : ""}>${escapeHtml(network.name)}</option>`
     ).join("")}
@@ -644,7 +840,7 @@ var DifmRadioSettings = class extends HTMLElement {
 };
 
 // src/settings-register.ts
-var SETTINGS_VERSION = "0.2.0";
+var SETTINGS_VERSION = "0.2.1";
 if (!customElements.get(SETTINGS_ELEMENT)) {
   customElements.define(SETTINGS_ELEMENT, DifmRadioSettings);
 }

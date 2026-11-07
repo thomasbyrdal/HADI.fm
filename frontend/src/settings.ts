@@ -1,3 +1,4 @@
+import { loadArtwork, peekArtwork, prefetchArtwork } from "./artwork-cache";
 import { ICON_MINUS, SETTINGS_STYLES } from "./settings-styles";
 import {
   SETTINGS_ELEMENT,
@@ -21,10 +22,12 @@ function stationById(stations: StationOption[], id: string): StationOption | und
   return stations.find((item) => item.id === id);
 }
 
+function sameIds(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
 export class DifmRadioSettings extends HTMLElement {
   private _hass: HomeAssistant | null = null;
-  private _narrow = false;
-  private _panel: PanelInfo | null = null;
   private _loaded = false;
   private _loading = false;
   private _saving = false;
@@ -33,7 +36,12 @@ export class DifmRadioSettings extends HTMLElement {
   private _config: SettingsConfig | null = null;
   private _speaker = "";
   private _quality = "";
+  private _listenKey = "";
   private _favouriteIds: string[] = [];
+  private _baselineSpeaker = "";
+  private _baselineQuality = "";
+  private _baselineListenKey = "";
+  private _baselineFavouriteIds: string[] = [];
   private _addOpen = false;
   private _networkKey = "";
   private _pendingIds: string[] = [];
@@ -41,21 +49,19 @@ export class DifmRadioSettings extends HTMLElement {
 
   set hass(hass: HomeAssistant) {
     this._hass = hass;
+    // Home Assistant pushes hass on every state change; do not rebuild the DOM
+    // or artwork loads are aborted and the panel flickers.
     if (!this._loaded && !this._loading) {
       void this._load();
-    } else {
-      this._render();
     }
   }
 
-  set narrow(narrow: boolean) {
-    this._narrow = Boolean(narrow);
-    this._render();
+  set narrow(_narrow: boolean) {
+    // Layout is CSS-driven; ignore narrow updates to avoid full redraws.
   }
 
-  set panel(panel: PanelInfo) {
-    this._panel = panel;
-    this._render();
+  set panel(_panel: PanelInfo) {
+    // Panel config is static for this integration.
   }
 
   connectedCallback(): void {
@@ -63,10 +69,11 @@ export class DifmRadioSettings extends HTMLElement {
       this._bound = true;
       this.addEventListener("click", this._onClick);
       this.addEventListener("change", this._onChange);
+      this.addEventListener("input", this._onInput);
     }
     if (this._hass && !this._loaded && !this._loading) {
       void this._load();
-    } else {
+    } else if (this._loaded) {
       this._render();
     }
   }
@@ -75,8 +82,37 @@ export class DifmRadioSettings extends HTMLElement {
     if (this._bound) {
       this.removeEventListener("click", this._onClick);
       this.removeEventListener("change", this._onChange);
+      this.removeEventListener("input", this._onInput);
       this._bound = false;
     }
+  }
+
+  private _isDirty(): boolean {
+    return (
+      this._speaker !== this._baselineSpeaker ||
+      this._quality !== this._baselineQuality ||
+      this._listenKey !== this._baselineListenKey ||
+      !sameIds(this._favouriteIds, this._baselineFavouriteIds)
+    );
+  }
+
+  private _captureBaseline(): void {
+    this._baselineSpeaker = this._speaker;
+    this._baselineQuality = this._quality;
+    this._baselineListenKey = this._listenKey;
+    this._baselineFavouriteIds = [...this._favouriteIds];
+  }
+
+  private _syncSaveButton(): void {
+    const button = this.querySelector(
+      "[data-action='save']",
+    ) as HTMLButtonElement | null;
+    if (!button) {
+      return;
+    }
+    const dirty = this._isDirty();
+    button.disabled = this._saving || !dirty;
+    button.textContent = this._saving ? "Saving…" : "Save";
   }
 
   private _onClick = (event: Event): void => {
@@ -145,22 +181,37 @@ export class DifmRadioSettings extends HTMLElement {
   };
 
   private _onChange = (event: Event): void => {
-    const target = event.target as HTMLSelectElement | null;
+    const target = event.target as HTMLSelectElement | HTMLInputElement | null;
     if (!target || !target.name) {
       return;
     }
     if (target.name === "speaker") {
       this._speaker = target.value;
       this._status = null;
-    } else if (target.name === "quality") {
-      this._quality = target.value;
-      this._status = null;
-    } else if (target.name === "network") {
-      this._networkKey = target.value;
-      this._render();
+      this._syncSaveButton();
       return;
     }
-    this._render();
+    if (target.name === "quality") {
+      this._quality = target.value;
+      this._status = null;
+      this._syncSaveButton();
+      return;
+    }
+    if (target.name === "network") {
+      this._networkKey = target.value;
+      this._prefetchNetwork(this._networkKey);
+      this._render();
+    }
+  };
+
+  private _onInput = (event: Event): void => {
+    const target = event.target as HTMLInputElement | null;
+    if (!target || target.name !== "listen_key") {
+      return;
+    }
+    this._listenKey = target.value;
+    this._status = null;
+    this._syncSaveButton();
   };
 
   private _openAddDialog(): void {
@@ -172,7 +223,48 @@ export class DifmRadioSettings extends HTMLElement {
       this._config?.stations[0]?.network ||
       "";
     this._addOpen = true;
+    this._prefetchNetwork(this._networkKey);
     this._render();
+  }
+
+  private _prefetchNetwork(networkKey: string): void {
+    prefetchArtwork(
+      (this._config?.stations ?? [])
+        .filter((station) => station.network === networkKey)
+        .map((station) => station.artwork_url),
+    );
+  }
+
+  private _prefetchKnownArtwork(): void {
+    prefetchArtwork((this._config?.favourites ?? []).map((item) => item.artwork_url));
+  }
+
+  private _hydrateArtwork(): void {
+    this.querySelectorAll<HTMLImageElement>("img[data-art]").forEach((img) => {
+      const url = img.dataset.art;
+      if (!url) {
+        return;
+      }
+      const cached = peekArtwork(url);
+      if (cached) {
+        if (img.src !== cached) {
+          img.src = cached;
+        }
+        img.classList.add("loaded");
+        return;
+      }
+      void loadArtwork(url)
+        .then((resolved) => {
+          if (!img.isConnected || img.dataset.art !== url) {
+            return;
+          }
+          img.src = resolved;
+          img.classList.add("loaded");
+        })
+        .catch(() => {
+          // Leave the tile background as a quiet placeholder.
+        });
+    });
   }
 
   private async _load(): Promise<void> {
@@ -188,9 +280,12 @@ export class DifmRadioSettings extends HTMLElement {
       this._config = data;
       this._speaker = data.default_media_player || data.media_players[0]?.entity_id || "";
       this._quality = data.stream_quality || data.qualities[0]?.value || "";
+      this._listenKey = data.listen_key ?? "";
       this._favouriteIds = data.favourites.map((item) => item.id);
       this._networkKey = data.networks[0]?.key || data.stations[0]?.network || "";
+      this._captureBaseline();
       this._loaded = true;
+      this._prefetchKnownArtwork();
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -201,6 +296,12 @@ export class DifmRadioSettings extends HTMLElement {
 
   private async _save(): Promise<void> {
     if (!this._hass || this._saving) {
+      return;
+    }
+    if (!this._isDirty()) {
+      this._status = "No changes to save.";
+      this._error = null;
+      this._render();
       return;
     }
     if (!this._speaker) {
@@ -216,16 +317,18 @@ export class DifmRadioSettings extends HTMLElement {
     this._saving = true;
     this._error = null;
     this._status = null;
-    this._render();
+    this._syncSaveButton();
     try {
       const result = await this._hass.callWS<{
         default_media_player: string;
         stream_quality: string;
+        listen_key: string;
         favourites: StationOption[];
       }>({
         type: WS_SET_CONFIG,
         default_media_player: this._speaker,
         stream_quality: this._quality,
+        listen_key: this._listenKey,
         favourites: this._favouriteIds,
       });
       if (this._config) {
@@ -233,10 +336,15 @@ export class DifmRadioSettings extends HTMLElement {
           ...this._config,
           default_media_player: result.default_media_player,
           stream_quality: result.stream_quality,
+          listen_key: result.listen_key,
           favourites: result.favourites,
         };
       }
+      this._speaker = result.default_media_player;
+      this._quality = result.stream_quality;
+      this._listenKey = result.listen_key;
       this._favouriteIds = result.favourites.map((item) => item.id);
+      this._captureBaseline();
       this._status = "Settings saved.";
     } catch (err) {
       this._error = err instanceof Error ? err.message : String(err);
@@ -274,9 +382,16 @@ export class DifmRadioSettings extends HTMLElement {
     station: StationOption,
     options: { removeAction?: string; selectAction?: string; selected?: boolean },
   ): string {
-    const art = station.artwork_url
-      ? `<img src="${escapeHtml(station.artwork_url)}" alt="" loading="lazy" />`
-      : `<div class="placeholder">${escapeHtml(station.name)}</div>`;
+    let art: string;
+    if (station.artwork_url) {
+      const cached = peekArtwork(station.artwork_url);
+      const safeUrl = escapeHtml(station.artwork_url);
+      art = cached
+        ? `<img class="loaded" src="${escapeHtml(cached)}" alt="" decoding="async" data-art="${safeUrl}" />`
+        : `<img alt="" decoding="async" data-art="${safeUrl}" />`;
+    } else {
+      art = `<div class="placeholder">${escapeHtml(station.name)}</div>`;
+    }
     const selectAttrs = options.selectAction
       ? `data-action="${options.selectAction}" data-id="${escapeHtml(station.id)}"`
       : "";
@@ -318,6 +433,10 @@ export class DifmRadioSettings extends HTMLElement {
     `;
   }
 
+  private _saveDisabledAttr(): string {
+    return this._saving || !this._isDirty() ? "disabled" : "";
+  }
+
   private _render(): void {
     if (!this.isConnected) {
       return;
@@ -341,11 +460,11 @@ export class DifmRadioSettings extends HTMLElement {
               ? `<p class="hint">${this._loading ? "Loading settings…" : "Waiting for Home Assistant…"}</p>`
               : `
             <div class="section">
-              <h2>Playback</h2>
-              <p class="hint">Default speaker and stream quality used when you tap a favourite.</p>
+              <h2>DI.FM Radio configuration</h2>
+              <p class="hint">This integration streams DI.FM and sister services (JazzRadio, RockRadio, ClassicalRadio, and more) to a Home Assistant media player using your Premium listen key. On this page you can set the default speaker and stream quality, update or clear the listen key, and choose which stations appear as favourites on the dashboard card.</p>
               <div class="field">
                 <label for="speaker">Default speaker</label>
-                <select id="speaker" name="speaker">
+                <select id="speaker" name="speaker" aria-label="Default speaker">
                   ${players
                     .map(
                       (player) =>
@@ -358,7 +477,7 @@ export class DifmRadioSettings extends HTMLElement {
               </div>
               <div class="field">
                 <label for="quality">Stream quality</label>
-                <select id="quality" name="quality">
+                <select id="quality" name="quality" aria-label="Stream quality">
                   ${qualities
                     .map(
                       (item) =>
@@ -369,6 +488,19 @@ export class DifmRadioSettings extends HTMLElement {
                     .join("")}
                 </select>
               </div>
+              <div class="field">
+                <label for="listen_key">Listen key</label>
+                <input
+                  id="listen_key"
+                  name="listen_key"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  value="${escapeHtml(this._listenKey)}"
+                  aria-label="Listen key"
+                />
+                <p class="field-hint">From Player Settings on any AudioAddict network site. Clear and save to remove the stored key.</p>
+              </div>
             </div>
             <div class="section">
               <h2>Favourite stations</h2>
@@ -378,9 +510,9 @@ export class DifmRadioSettings extends HTMLElement {
               })}
               <div class="actions">
                 <button type="button" class="secondary" data-action="open-add">Add favourite station</button>
-                <button type="button" class="primary" data-action="save" ${
-                  this._saving ? "disabled" : ""
-                }>${this._saving ? "Saving…" : "Save"}</button>
+                <button type="button" class="primary" data-action="save" ${this._saveDisabledAttr()}>${
+                  this._saving ? "Saving…" : "Save"
+                }</button>
               </div>
             </div>
           `
@@ -389,8 +521,7 @@ export class DifmRadioSettings extends HTMLElement {
       </div>
       ${this._addOpen ? this._renderAddDialog(networks) : ""}
     `;
-    void this._narrow;
-    void this._panel;
+    this._hydrateArtwork();
   }
 
   private _renderAddDialog(networks: { key: string; name: string }[]): string {
@@ -406,7 +537,7 @@ export class DifmRadioSettings extends HTMLElement {
           <div class="dialog-body">
             <div class="field" style="max-width:100%">
               <label for="network">Radio service</label>
-              <select id="network" name="network">
+              <select id="network" name="network" aria-label="Radio service">
                 ${networks
                   .map(
                     (network) =>

@@ -54,7 +54,7 @@ See [docs/releasing.md](docs/releasing.md) for GitHub release notes.
 3. Select favourites. Search the dropdown. Order is kept when you edit later.
 4. Choose a default `media_player` and a stream quality.
 
-Options later: **Configure** on the integration (or the **DI.FM Radio** sidebar panel). The settings panel shows the **default speaker**, **stream quality**, and favourite stations as a scrollable artwork grid. Use **Add favourite station** to pick stations by radio service. Favourite edits do not reload the entry, so an owned stream is not torn down.
+Options later: **Configure** on the integration (or the **DI.FM Radio** sidebar panel). The settings panel shows the **default speaker**, **stream quality**, and favourite stations as a scrollable 5-wide artwork grid. Use **Add favourite station** to pick stations by radio service. Favourite edits do not reload the entry, so an owned stream is not torn down.
 
 Stream quality (official Premium copy):
 

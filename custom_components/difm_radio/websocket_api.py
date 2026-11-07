@@ -13,18 +13,21 @@ from homeassistant.helpers import config_validation as cv
 from .const import (
     CONF_DEFAULT_MEDIA_PLAYER,
     CONF_FAVOURITES,
+    CONF_LISTEN_KEY,
     CONF_STREAM_QUALITY,
     DEFAULT_STREAM_QUALITY,
     DOMAIN,
     QUALITY_LABELS,
     STREAM_QUALITIES,
 )
+from .exceptions import CannotConnectError, InvalidListenKeyError, InvalidResponseError
 from .helpers import (
     favourite_views,
     merge_favourites,
     parse_favourites,
     validate_media_player_entity,
 )
+from .provider import describe_request_error
 
 WS_TYPE_GET_CONFIG = f"{DOMAIN}/get_config"
 WS_TYPE_SET_CONFIG = f"{DOMAIN}/set_config"
@@ -135,6 +138,7 @@ async def ws_get_config(
         {
             "default_media_player": entry.options.get(CONF_DEFAULT_MEDIA_PLAYER),
             "stream_quality": entry.options.get(CONF_STREAM_QUALITY, DEFAULT_STREAM_QUALITY),
+            CONF_LISTEN_KEY: str(entry.data.get(CONF_LISTEN_KEY, "")),
             "qualities": [
                 {"value": key, "label": QUALITY_LABELS[key]} for key in STREAM_QUALITIES
             ],
@@ -152,6 +156,7 @@ async def ws_get_config(
         vol.Required(CONF_DEFAULT_MEDIA_PLAYER): cv.entity_id,
         vol.Required(CONF_STREAM_QUALITY): vol.In(STREAM_QUALITIES),
         vol.Required(CONF_FAVOURITES): [cv.string],
+        vol.Required(CONF_LISTEN_KEY): cv.string,
     }
 )
 @websocket_api.async_response
@@ -160,7 +165,7 @@ async def ws_set_config(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Persist speaker, quality, and favourite station ids from the settings panel."""
+    """Persist speaker, quality, favourites, and listen key from the settings panel."""
 
     entry, runtime = _entry_runtime(hass)
     if entry is None or runtime is None:
@@ -189,11 +194,33 @@ async def ws_set_config(
         connection.send_error(msg["id"], "no_favourites", "Select at least one favourite")
         return
 
+    listen_key = str(msg.get(CONF_LISTEN_KEY, "")).strip()
+    previous_key = str(entry.data.get(CONF_LISTEN_KEY, "")).strip()
+    if listen_key and listen_key != previous_key:
+        try:
+            await runtime.coordinator.client.async_validate_listen_key(listen_key)
+        except InvalidListenKeyError:
+            connection.send_error(msg["id"], "invalid_auth", "The listen key was rejected")
+            return
+        except (CannotConnectError, InvalidResponseError) as err:
+            connection.send_error(msg["id"], "cannot_connect", describe_request_error(err))
+            return
+
     options = dict(entry.options)
     options[CONF_DEFAULT_MEDIA_PLAYER] = entity_id
     options[CONF_STREAM_QUALITY] = str(msg[CONF_STREAM_QUALITY])
     options[CONF_FAVOURITES] = [fav.as_dict() for fav in merged]
-    hass.config_entries.async_update_entry(entry, options=options)
+
+    update_kwargs: dict[str, Any] = {"options": options}
+    if listen_key != previous_key:
+        data = dict(entry.data)
+        data[CONF_LISTEN_KEY] = listen_key
+        update_kwargs["data"] = data
+
+    hass.config_entries.async_update_entry(entry, **update_kwargs)
+
+    if listen_key != previous_key:
+        runtime.coordinator.client.set_listen_key(listen_key or None)
 
     if runtime.entity is not None:
         runtime.entity.async_on_options_update()
@@ -203,7 +230,8 @@ async def ws_set_config(
     if runtime.activity is not None:
         runtime.activity.note(
             "settings_saved",
-            f"speaker={entity_id} favourites={len(merged)}",
+            f"speaker={entity_id} favourites={len(merged)} listen_key_changed="
+            f"{listen_key != previous_key}",
         )
 
     connection.send_result(
@@ -211,6 +239,7 @@ async def ws_set_config(
         {
             "default_media_player": entity_id,
             "stream_quality": options[CONF_STREAM_QUALITY],
+            CONF_LISTEN_KEY: listen_key,
             "favourites": [
                 _favourite_payload(view) for view in favourite_views(merged, catalogue)
             ],

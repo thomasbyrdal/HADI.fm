@@ -1,8 +1,16 @@
 # Changelog
 
+## 0.2.1 — 2026-11-07
+
+- Stop settings-panel flicker from Home Assistant state updates so artwork can finish loading
+- Prefetch and cache station artwork for the favourite grids
+- Use 5-wide scrollable grids so artwork tiles fit the Configure dialog
+- Style speaker/quality/service selectors as clickable dropdown buttons
+- Show and edit the listen key on the main settings panel; Save only when something changed
+
 ## 0.2.0 — 2026-11-07
 
-- Replace the Configure favourites dropdown with a settings panel artwork grid (6×6, scrollable)
+- Replace the Configure favourites dropdown with a settings panel artwork grid (scrollable)
 - Add favourite stations through a service dropdown and dual selectable/selected grids
 - Manage default speaker and stream quality in the same settings panel
 - Expose `difm_radio/get_config` and `difm_radio/set_config` websocket commands
